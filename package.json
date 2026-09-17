@@ -1,0 +1,31 @@
+{
+  "name": "employee-attendance",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@attendance/web",
+    "dev:web": "npm run dev --workspace=@attendance/web",
+    "dev:api": "npm run dev --workspace=@attendance/api",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace=@attendance/web",
+    "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio --schema prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "prisma": "^6.12.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
+  "prisma": { "seed": "tsx prisma/seed.ts" }
+}

@@ -1,0 +1,21 @@
+import cors from "cors";
+import express from "express";
+import helmet from "helmet";
+import { env } from "./config/env.js";
+import { errorHandler, notFound, requestLogger } from "./middleware/error-handler.js";
+import { healthRouter } from "./routes/health.routes.js";
+import { authRouter } from "./routes/auth.routes.js";
+import { attendanceRouter } from "./routes/attendance.routes.js";
+import { adminRouter } from "./routes/admin.routes.js";
+
+export const app = express();
+app.use(cors({ origin: env.CLIENT_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean) }));
+app.use(helmet());
+app.use(express.json({ limit: "100kb" }));
+app.use(requestLogger);
+app.use("/api/v1", healthRouter);
+app.use("/api/v1", authRouter);
+app.use("/api/v1", attendanceRouter);
+app.use("/api/v1", adminRouter);
+app.use(notFound);
+app.use(errorHandler);

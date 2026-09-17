@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: attendance
+          POSTGRES_USER: attendance
+          POSTGRES_PASSWORD: attendance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U attendance -d attendance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://attendance:attendance@localhost:5432/attendance?schema=public
+      PORT: 3000
+      CLIENT_ORIGIN: http://localhost:5173
+      CLIENT_ORIGINS: http://localhost:5173,http://127.0.0.1:4173
+      JWT_SECRET: ci-secret-that-is-at-least-thirty-two-characters-long
+      ATTENDANCE_TIMEZONE: UTC
+      VITE_API_URL: http://127.0.0.1:3000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare database
+        run: |
+          npm run db:generate
+          npx prisma migrate deploy --schema prisma/schema.prisma
+          npm run db:seed
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Integration tests
+        run: npm run test:integration --workspace=@attendance/api
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Start API
+        run: npm run dev:api > api.log 2>&1 &
+
+      - name: Wait for API
+        run: |
+          for attempt in {1..30}; do
+            curl --fail http://127.0.0.1:3000/api/v1/health && exit 0
+            sleep 1
+          done
+          cat api.log
+          exit 1
+
+      - name: E2E tests
+        run: npm run test:e2e
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+            api.log

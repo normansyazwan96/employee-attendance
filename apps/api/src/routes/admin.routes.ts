@@ -1,0 +1,25 @@
+import { Role } from "@prisma/client";
+import { Router } from "express";
+import { exportAdminAttendance, getAdminAttendance } from "../controllers/admin-attendance.controller.js";
+import { getAdminAudit } from "../controllers/admin-audit.controller.js";
+import { getAdminClients } from "../controllers/admin-clients.controller.js";
+import { getAdminSchedules, upsertAdminSchedule } from "../controllers/admin-schedules.controller.js";
+import { createAdminEmployee, getAdminEmployees, updateAdminEmployeeStatus } from "../controllers/admin-employees.controller.js";
+import { createAdminWorksite, deleteAdminWorksite, getAdminWorksites, updateAdminWorksite } from "../controllers/admin-worksites.controller.js";
+import { requireAuth, requireRoles } from "../middleware/auth.js";
+
+export const adminRouter = Router();
+adminRouter.use(requireAuth, requireRoles(Role.ADMIN, Role.DEV_ADMIN));
+adminRouter.get("/admin/attendance", getAdminAttendance);
+adminRouter.get("/admin/attendance/export", exportAdminAttendance);
+adminRouter.get("/admin/audit", getAdminAudit);
+adminRouter.get("/admin/clients", getAdminClients);
+adminRouter.get("/admin/schedules", getAdminSchedules);
+adminRouter.put("/admin/schedules", upsertAdminSchedule);
+adminRouter.get("/admin/worksites", getAdminWorksites);
+adminRouter.post("/admin/worksites", createAdminWorksite);
+adminRouter.patch("/admin/worksites/:id", updateAdminWorksite);
+adminRouter.delete("/admin/worksites/:id", deleteAdminWorksite);
+adminRouter.get("/admin/employees", getAdminEmployees);
+adminRouter.post("/admin/employees", createAdminEmployee);
+adminRouter.patch("/admin/employees/:id/status", updateAdminEmployeeStatus);
