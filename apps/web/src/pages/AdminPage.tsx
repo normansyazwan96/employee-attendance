@@ -9,6 +9,7 @@ import { useLanguage } from "../lib/language-context";
 import { createWorksite, deleteWorksite, getWorksites, updateWorksite, type Worksite, type WorksiteInput } from "../lib/worksites";
 import { AdminManagement } from "../components/AdminManagement";
 import { getSession } from "../lib/auth";
+import { WebhookDetails } from "../components/WebhookDetails";
 
 const emptyWorksite: WorksiteInput = { name: "", latitude: 40.7128, longitude: -74.006, radiusMeters: 150, isActive: true };
 const WorksiteMap = lazy(() => import("../components/WorksiteMap").then(({ WorksiteMap: map }) => ({ default: map })));
@@ -83,6 +84,7 @@ export function AdminPage(): JSX.Element {
     </section>
 
     {isDevAdmin && <AdminManagement />}
+    {isDevAdmin && <WebhookDetails />}
     <div id="employees"><EmployeeManagement /></div>
     <ScheduleManagement />
     <div id="audit"><AuditHistory /></div>

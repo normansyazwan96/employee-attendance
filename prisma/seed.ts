@@ -23,20 +23,20 @@ async function main(): Promise<void> {
   const client = await prisma.client.upsert({ where: { id: "acme-local" }, update: { name: "Acme Local" }, create: { id: "acme-local", name: "Acme Local" } });
   await prisma.worksite.upsert({ where: { clientId_name: { clientId: client.id, name: "Acme Local HQ" } }, update: { latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150, isActive: true }, create: { clientId: client.id, name: "Acme Local HQ", latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150 } });
   const accounts = [
-    { email: "devadmin@attendance.local", role: Role.DEV_ADMIN, clientId: null, password: seedPassword("SEED_DEV_ADMIN_PASSWORD") },
-    { email: "admin@acme.local", role: Role.ADMIN, clientId: client.id, password: seedPassword("SEED_ADMIN_PASSWORD") },
-    { email: "john.smith@acme.local", role: Role.EMPLOYEE, clientId: client.id, password: seedPassword("SEED_EMPLOYEE_PASSWORD") },
+    { username: "devadmin", role: Role.DEV_ADMIN, clientId: null, password: seedPassword("SEED_DEV_ADMIN_PASSWORD") },
+    { username: "admin", role: Role.ADMIN, clientId: client.id, password: seedPassword("SEED_ADMIN_PASSWORD") },
+    { username: "john.smith", role: Role.EMPLOYEE, clientId: client.id, password: seedPassword("SEED_EMPLOYEE_PASSWORD") },
   ];
   for (const { password, ...account } of accounts) {
     const passwordHash = await hashPassword(password);
     await prisma.user.upsert({
-      where: { email: account.email },
+      where: { username: account.username },
       update: { role: account.role, clientId: account.clientId, passwordHash, passwordVersion: { increment: 1 }, mustChangePassword: true },
       create: { ...account, passwordHash, mustChangePassword: true },
     });
   }
-  const seededAdmin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@acme.local" } });
-  const john = await prisma.user.findUniqueOrThrow({ where: { email: "john.smith@acme.local" } });
+  const seededAdmin = await prisma.user.findUniqueOrThrow({ where: { username: "admin" } });
+  const john = await prisma.user.findUniqueOrThrow({ where: { username: "john.smith" } });
   await prisma.user.update({ where: { id: john.id }, data: { createdByUserId: seededAdmin.id } });
   const johnEmployee = await prisma.employee.upsert({ where: { userId: john.id }, update: { firstName: "John", lastName: "Smith" }, create: { userId: john.id, firstName: "John", lastName: "Smith" } });
 

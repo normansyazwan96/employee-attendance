@@ -2,8 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { env } from "../config/env.js";
 
-export type AuthTokenPayload = { sub: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; email: string; passwordVersion: number; exp: number };
-const tokenPayloadSchema = z.object({ sub: z.string().min(1), email: z.string().email(), role: z.enum(["EMPLOYEE", "ADMIN", "DEV_ADMIN"]), passwordVersion: z.number().int().nonnegative(), exp: z.number().int().positive() });
+export type AuthTokenPayload = { sub: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; username: string; passwordVersion: number; exp: number };
+const tokenPayloadSchema = z.object({ sub: z.string().min(1), username: z.string().min(3).max(40), role: z.enum(["EMPLOYEE", "ADMIN", "DEV_ADMIN"]), passwordVersion: z.number().int().nonnegative(), exp: z.number().int().positive() });
 const encode = (value: object): string => Buffer.from(JSON.stringify(value)).toString("base64url");
 const signature = (input: string): string => createHmac("sha256", env.JWT_SECRET).update(input).digest("base64url");
 

@@ -19,8 +19,8 @@ let createdEmployeeId = "";
 const worksiteInput = { name: `Client B site ${suffix}`, latitude: 2.9, longitude: 101.6, radiusMeters: 150, isActive: true };
 const temporaryEmployeePassword = "Integration!Pass9042";
 
-function token(sub: string, email: string, role: Role): string {
-  return createAccessToken({ sub, email, role });
+function token(sub: string, username: string, role: Role): string {
+  return createAccessToken({ sub, username, role });
 }
 
 beforeAll(async () => {
@@ -31,10 +31,10 @@ beforeAll(async () => {
   clientAId = clientA.id;
   clientBId = clientB.id;
   const users = await prisma.$transaction([
-    prisma.user.create({ data: { email: `admin-a-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
-    prisma.user.create({ data: { email: `admin-a2-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
-    prisma.user.create({ data: { email: `admin-b-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientBId } }),
-    prisma.user.create({ data: { email: `dev-${suffix}@example.com`, passwordHash: "test", role: Role.DEV_ADMIN } }),
+    prisma.user.create({ data: { username: `admin-a-${suffix}`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
+    prisma.user.create({ data: { username: `admin-a2-${suffix}`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
+    prisma.user.create({ data: { username: `admin-b-${suffix}`, passwordHash: "test", role: Role.ADMIN, clientId: clientBId } }),
+    prisma.user.create({ data: { username: `dev-${suffix}`, passwordHash: "test", role: Role.DEV_ADMIN } }),
   ]);
   [adminAId, adminA2Id, adminBId, devAdminId] = users.map((user) => user.id);
   const worksite = await prisma.worksite.create({ data: { ...worksiteInput, clientId: clientBId } });
@@ -51,13 +51,13 @@ afterAll(async () => {
 
 describe("admin worksite client isolation", () => {
   it("does not expose another client's worksites", async () => {
-    const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`);
+    const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`);
     expect(response.status).toBe(200);
     expect(response.body.worksites).toEqual([]);
   });
 
   it("does not allow cross-client update or delete", async () => {
-    const authorization = `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`;
+    const authorization = `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`;
     const update = await request(app).patch(`/api/v1/admin/worksites/${worksiteBId}`).set("Authorization", authorization).send(worksiteInput);
     const deletion = await request(app).delete(`/api/v1/admin/worksites/${worksiteBId}`).set("Authorization", authorization);
     expect(update.status).toBe(404);
@@ -66,77 +66,83 @@ describe("admin worksite client isolation", () => {
   });
 
   it("allows a dev admin to view all client worksites", async () => {
-    const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`);
+    const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`);
     expect(response.status).toBe(200);
     expect(response.body.worksites.some((site: { id: string }) => site.id === worksiteBId)).toBe(true);
   });
 
   it("creates and deactivates an employee without deleting the account", async () => {
-    const adminAToken = token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN);
-    const email = `employee-${suffix}@example.com`;
-    const created = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ email, password: temporaryEmployeePassword, firstName: "Test", lastName: "Employee" });
+    const adminAToken = token(adminAId, `admin-a-${suffix}`, Role.ADMIN);
+    const username = `employee-${suffix}`;
+    const created = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ username, password: temporaryEmployeePassword, firstName: "Test", lastName: "Employee" });
     expect(created.status).toBe(201);
     createdEmployeeId = created.body.employee.id;
     const employeeId = created.body.employee.employeeId as string;
 
-    const sameClientEmployees = await request(app).get("/api/v1/admin/employees").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`);
+    const sameClientEmployees = await request(app).get("/api/v1/admin/employees").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}`, Role.ADMIN)}`);
     expect(sameClientEmployees.status).toBe(200);
     expect(sameClientEmployees.body.employees).toEqual([]);
 
     const schedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${adminAToken}`).send({ employeeId, workDays: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", gracePeriodMinutes: 10, isActive: true });
     expect(schedule.status).toBe(200);
     expect(schedule.body.schedule.employeeId).toBe(employeeId);
-    const crossClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}@example.com`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
+    const crossClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
     expect(crossClientSchedule.status).toBe(404);
-    const sameClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
+    const sameClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
     expect(sameClientSchedule.status).toBe(404);
 
-    const crossClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}@example.com`, Role.ADMIN)}`).send({ isActive: false });
+    const crossClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}`, Role.ADMIN)}`).send({ isActive: false });
     expect(crossClient.status).toBe(404);
-    const sameClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ isActive: false });
+    const sameClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}`, Role.ADMIN)}`).send({ isActive: false });
     expect(sameClient.status).toBe(404);
 
     const resetPassword = "Reset!Employee9042";
-    const forbiddenReset = await request(app).patch(`/api/v1/admin/accounts/${createdEmployeeId}/password`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ password: resetPassword });
+    const forbiddenReset = await request(app).patch(`/api/v1/admin/accounts/${createdEmployeeId}/password`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}`, Role.ADMIN)}`).send({ password: resetPassword });
     expect(forbiddenReset.status).toBe(404);
     const reset = await request(app).patch(`/api/v1/admin/accounts/${createdEmployeeId}/password`).set("Authorization", `Bearer ${adminAToken}`).send({ password: resetPassword });
     expect(reset.status).toBe(200);
-    expect((await request(app).post("/api/v1/auth/login").send({ email, password: temporaryEmployeePassword })).status).toBe(401);
-    const resetLogin = await request(app).post("/api/v1/auth/login").send({ email, password: resetPassword });
+    expect((await request(app).post("/api/v1/auth/login").send({ username, password: temporaryEmployeePassword })).status).toBe(401);
+    const resetLogin = await request(app).post("/api/v1/auth/login").send({ username, password: resetPassword });
     expect(resetLogin.status).toBe(200);
     expect(resetLogin.body.user.mustChangePassword).toBe(true);
 
     const deactivated = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${adminAToken}`).send({ isActive: false });
     expect(deactivated.status).toBe(200);
-    const login = await request(app).post("/api/v1/auth/login").send({ email, password: resetPassword });
+    const login = await request(app).post("/api/v1/auth/login").send({ username, password: resetPassword });
     expect(login.status).toBe(401);
     expect(await prisma.employee.findUnique({ where: { userId: createdEmployeeId } })).not.toBeNull();
     expect(await prisma.auditLog.findFirst({ where: { actorUserId: adminAId, action: "DEACTIVATE", entityType: "Employee", entityId: createdEmployeeId } })).not.toBeNull();
   });
 
   it("allows only dev admins to create and reset administrator accounts", async () => {
-    const input = { email: `created-admin-${suffix}@example.com`, displayName: "Created Admin", clientId: clientBId, password: "Create!Admin9042" };
-    const forbidden = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`).send(input);
+    const input = { username: `created-admin-${suffix}`, displayName: "Created Admin", password: "Create!Admin9042" };
+    const forbidden = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`).send(input);
     expect(forbidden.status).toBe(403);
 
-    const created = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`).send(input);
+    const created = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send(input);
     expect(created.status).toBe(201);
     createdAdminId = created.body.admin.id;
-    expect(created.body.admin).toMatchObject({ email: input.email, role: Role.ADMIN, clientId: clientBId });
+    expect(created.body.admin).toMatchObject({ username: input.username, role: Role.ADMIN });
+    expect(created.body.admin.clientId).toEqual(expect.any(String));
 
     const replacement = "Reset!Admin9042";
-    const reset = await request(app).patch(`/api/v1/admin/accounts/${createdAdminId}/password`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`).send({ password: replacement });
+    const reset = await request(app).patch(`/api/v1/admin/accounts/${createdAdminId}/password`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ password: replacement });
     expect(reset.status).toBe(200);
-    expect((await request(app).post("/api/v1/auth/login").send({ email: input.email, password: input.password })).status).toBe(401);
-    const login = await request(app).post("/api/v1/auth/login").send({ email: input.email, password: replacement });
+    expect((await request(app).post("/api/v1/auth/login").send({ username: input.username, password: input.password })).status).toBe(401);
+    const login = await request(app).post("/api/v1/auth/login").send({ username: input.username, password: replacement });
     expect(login.status).toBe(200);
     expect(login.body.user.mustChangePassword).toBe(true);
+
+    const deactivated = await request(app).patch(`/api/v1/admin/admins/${createdAdminId}/status`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ isActive: false });
+    expect(deactivated.status).toBe(200);
+    expect(deactivated.body.admin.isActive).toBe(false);
+    expect((await request(app).post("/api/v1/auth/login").send({ username: input.username, password: replacement })).status).toBe(401);
   });
 
   it("scopes audit history by client", async () => {
-    const clientA = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`);
-    const clientB = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}@example.com`, Role.ADMIN)}`);
-    const dev = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`);
+    const clientA = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`);
+    const clientB = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}`, Role.ADMIN)}`);
+    const dev = await request(app).get("/api/v1/admin/audit").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`);
     expect(clientA.status).toBe(200);
     expect(clientA.body.audit.some((entry: { entityId: string }) => entry.entityId === createdEmployeeId)).toBe(true);
     expect(clientB.status).toBe(200);
@@ -146,25 +152,34 @@ describe("admin worksite client isolation", () => {
   });
 
   it("supports paginated attendance date filters", async () => {
-    const response = await request(app).get("/api/v1/admin/attendance?page=1&pageSize=1&from=2020-01-01&to=2030-12-31").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`);
+    const response = await request(app).get("/api/v1/admin/attendance?page=1&pageSize=1&from=2020-01-01&to=2030-12-31").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`);
     expect(response.status).toBe(200);
     expect(response.body.pagination).toMatchObject({ page: 1, pageSize: 1 });
     expect(response.body.attendance.length).toBeLessThanOrEqual(1);
   });
 
   it("exports scoped attendance as CSV without GPS fields", async () => {
-    const response = await request(app).get("/api/v1/admin/attendance/export?from=2020-01-01&to=2030-12-31").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`);
+    const response = await request(app).get("/api/v1/admin/attendance/export?from=2020-01-01&to=2030-12-31").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`);
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/csv");
-    expect(response.text).toContain("Employee,Email,Work date");
+    expect(response.text).toContain("Employee,Username,Work date");
     expect(response.text).not.toContain("Latitude");
   });
 
   it("allows every authenticated role to read and update its profile", async () => {
-    const response = await request(app).get("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`);
+    const response = await request(app).get("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`);
     expect(response.status).toBe(200);
-    const updated = await request(app).patch("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`).send({ email: `dev-${suffix}@example.com`, displayName: "Platform Owner" });
+    const updated = await request(app).patch("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ username: `dev-${suffix}`, displayName: "Platform Owner" });
     expect(updated.status).toBe(200);
     expect(updated.body.profile.displayName).toBe("Platform Owner");
+  });
+
+  it("exposes webhook configuration details only to dev admins", async () => {
+    const forbidden = await request(app).get("/api/v1/admin/system/webhook").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`);
+    expect(forbidden.status).toBe(403);
+    const response = await request(app).get("/api/v1/admin/system/webhook").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`);
+    expect(response.status).toBe(200);
+    expect(response.body.webhook).toMatchObject({ events: ["attendance.clock_in", "attendance.clock_out"], method: "POST", signatureAlgorithm: "HMAC-SHA256" });
+    expect(response.body.webhook).not.toHaveProperty("secret");
   });
 });

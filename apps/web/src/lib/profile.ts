@@ -1,9 +1,9 @@
 import { clearSession, getSession } from "./auth";
 import { apiUrl } from "./api";
 
-export type Profile = { id: string; email: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string; mustChangePassword: boolean };
-export type ProfileInput = { email: string; displayName: string | null; firstName?: string; lastName?: string; currentPassword?: string; newPassword?: string };
-export type ProfileUpdate = { profile: Profile; token?: string };
+export type Profile = { id: string; username: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string; mustChangePassword: boolean };
+export type ProfileInput = { username: string; displayName: string | null; firstName?: string; lastName?: string; currentPassword?: string; newPassword?: string };
+export type ProfileUpdate = { profile: Profile; token: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();

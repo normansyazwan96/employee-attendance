@@ -8,7 +8,7 @@ import { getAdminContext } from "../services/admin-scope.js";
 
 const strongPassword = z.string().min(12).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
 const employeeSchema = z.object({
-  email: z.string().email().transform((value) => value.toLowerCase()),
+  username: z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).transform((value) => value.toLowerCase()),
   password: strongPassword,
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().min(1).max(80),
@@ -18,14 +18,14 @@ const statusSchema = z.object({ isActive: z.boolean() });
 
 type Auth = { sub: string; role: Role };
 
-function employeeView(user: { id: string; email: string; isActive: boolean; clientId: string | null; employee: { id: string; firstName: string; lastName: string } | null }) {
-  return { id: user.id, employeeId: user.employee?.id ?? null, email: user.email, firstName: user.employee?.firstName ?? "", lastName: user.employee?.lastName ?? "", isActive: user.isActive, clientId: user.clientId };
+function employeeView(user: { id: string; username: string; isActive: boolean; clientId: string | null; employee: { id: string; firstName: string; lastName: string } | null }) {
+  return { id: user.id, employeeId: user.employee?.id ?? null, username: user.username, firstName: user.employee?.firstName ?? "", lastName: user.employee?.lastName ?? "", isActive: user.isActive, clientId: user.clientId };
 }
 
 export async function getAdminEmployees(_request: Request, response: Response): Promise<void> {
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
-  const users = await prisma.user.findMany({ where: context.employeeUserWhere, include: { employee: true }, orderBy: [{ isActive: "desc" }, { email: "asc" }] });
+  const users = await prisma.user.findMany({ where: context.employeeUserWhere, include: { employee: true }, orderBy: [{ isActive: "desc" }, { username: "asc" }] });
   response.json({ employees: users.map(employeeView) });
 }
 
@@ -34,17 +34,17 @@ export async function createAdminEmployee(request: Request, response: Response):
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
   const parsed = employeeSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "Enter a valid email, password, first name, and last name" }); return; }
+  if (!parsed.success) { response.status(400).json({ error: "Enter a valid username, strong password, first name, and last name" }); return; }
   const clientId = auth.role === Role.DEV_ADMIN ? parsed.data.clientId : context.clientId;
   if (!clientId) { response.status(400).json({ error: "A clientId is required for dev admin employee creation" }); return; }
   if (!(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) { response.status(400).json({ error: "Client not found" }); return; }
   try {
     const passwordHash = await hashPassword(parsed.data.password);
-    const user = await prisma.user.create({ data: { email: parsed.data.email, passwordHash, mustChangePassword: true, role: Role.EMPLOYEE, clientId, createdByUserId: auth.sub, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } } }, include: { employee: true } });
-    await recordAudit({ actorUserId: auth.sub, clientId, action: "CREATE", entityType: "Employee", entityId: user.id, details: { email: user.email, clientId } });
+    const user = await prisma.user.create({ data: { username: parsed.data.username, passwordHash, mustChangePassword: true, role: Role.EMPLOYEE, clientId, createdByUserId: auth.sub, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } } }, include: { employee: true } });
+    await recordAudit({ actorUserId: auth.sub, clientId, action: "CREATE", entityType: "Employee", entityId: user.id, details: { username: user.username, clientId } });
     response.status(201).json({ employee: employeeView(user) });
   } catch (error: unknown) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") { response.status(409).json({ error: "An account with that email already exists" }); return; }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") { response.status(409).json({ error: "An account with that username already exists" }); return; }
     throw error;
   }
 }

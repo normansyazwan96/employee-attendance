@@ -2,7 +2,7 @@ import { getSession } from "./auth";
 import type { Attendance } from "./attendance";
 import { apiUrl } from "./api";
 
-export type AdminAttendance = Attendance & { employee: { id: string; name: string; email: string } };
+export type AdminAttendance = Attendance & { employee: { id: string; name: string; username: string } };
 
 export type AttendanceFilters = { from?: string; to?: string; page?: number; pageSize?: number };
 export type AttendancePage = { attendance: AdminAttendance[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } };

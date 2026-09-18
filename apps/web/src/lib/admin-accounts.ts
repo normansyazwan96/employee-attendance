@@ -1,8 +1,8 @@
 import { clearSession, getSession } from "./auth";
 import { apiUrl } from "./api";
 
-export type AdminAccount = { id: string; email: string; role: "ADMIN"; isActive: boolean; displayName: string | null; clientId: string | null; clientName: string | null };
-export type AdminAccountInput = { email: string; displayName: string; clientId: string; password: string };
+export type AdminAccount = { id: string; username: string; role: "ADMIN"; isActive: boolean; displayName: string | null; clientId: string | null; clientName: string | null };
+export type AdminAccountInput = { username: string; displayName: string; password: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();
@@ -17,3 +17,4 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export async function getAdminAccounts(): Promise<AdminAccount[]> { return (await request<{ admins: AdminAccount[] }>("/admin/admins")).admins; }
 export async function createAdminAccount(input: AdminAccountInput): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>("/admin/admins", { method: "POST", body: JSON.stringify(input) })).admin; }
 export async function resetManagedAccountPassword(id: string, password: string): Promise<void> { await request(`/admin/accounts/${id}/password`, { method: "PATCH", body: JSON.stringify({ password }) }); }
+export async function updateAdminAccountStatus(id: string, isActive: boolean): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>(`/admin/admins/${id}/status`, { method: "PATCH", body: JSON.stringify({ isActive }) })).admin; }

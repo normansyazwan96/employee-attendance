@@ -49,15 +49,15 @@ npm run db:migrate -- --name init-auth
 
 To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 12 characters and include uppercase, lowercase, number, and symbol characters.
 
-The Prisma schema contains Client, User, Employee, EmployeeSchedule, AttendanceRecord, Worksite, and AuditLog models. Users support soft deactivation through `isActive`, so employee attendance history is retained when access is disabled. Every role can manage its own profile and password. Admin mutations are recorded in audit logs. An ADMIN can create employees and manage only the employees it created, including their status, temporary-password resets, schedules, attendance, and exports. DEV_ADMIN has the full admin surface across all clients, can create client administrators, and can reset administrator or employee passwords. Every administrator-issued temporary password must be changed at the next login. `db:generate` creates Prisma client artifacts, `db:migrate` creates the local database tables, and `db:seed` creates local development accounts and a sample worksite. Open Prisma Studio with `npm run db:studio`.
+The Prisma schema contains Client, User, Employee, EmployeeSchedule, AttendanceRecord, Worksite, and AuditLog models. Users sign in with a unique username and support soft deactivation through `isActive`, so attendance history is retained when access is disabled. Every role can manage its own profile and password. Admin mutations are recorded in audit logs. An ADMIN can create employees and manage only the employees it created, including their status, temporary-password resets, schedules, attendance, and exports. DEV_ADMIN has the full admin surface across all clients and can create, deactivate, reactivate, and reset client administrator accounts. Every administrator-issued temporary password must be changed at the next login. `db:generate` creates Prisma client artifacts, `db:migrate` creates the local database tables, and `db:seed` creates local development accounts and a sample worksite. Open Prisma Studio with `npm run db:studio`.
 
 ## Local development accounts
 
 The seed creates these accounts with the separate passwords supplied through the environment:
 
-- `john.smith@acme.local` - Employee
-- `admin@acme.local` - Admin
-- `devadmin@attendance.local` - Dev Admin
+- `john.smith` - Employee
+- `admin` - Admin
+- `devadmin` - Dev Admin
 
 Change `JWT_SECRET` in `.env` to a unique random value of at least 32 characters. Set `CLIENT_ORIGINS` to a comma-separated list of trusted web origins before production. Seeded and administrator-created users must replace their temporary password before the rest of the application becomes available.
 
@@ -68,6 +68,8 @@ Employees can clock in and clock out once per day from the Employee dashboard, t
 The seeded Acme Local HQ worksite is at `2.9084686453776176, 101.60997566744295` with a 150 m radius. Admins can create, edit, activate, deactivate, and delete worksites from the admin dashboard, create or deactivate employees without deleting their records, and assign schedules from the same dashboard. Attendance dates use `ATTENDANCE_TIMEZONE` from `.env` and default to `UTC`.
 
 The API validates access-token claims, enforces role and client boundaries, applies Helmet security headers, limits JSON request bodies to 100 KB, and limits repeated login attempts from one IP to 10 requests per 15-minute window. Employees and administrators can explicitly log out, and expired sessions are cleared on the next authenticated API response. The current limiter is process-local; use a shared store such as Redis before running multiple API instances.
+
+Attendance webhooks are available for `attendance.clock_in` and `attendance.clock_out`. Set both `WEBHOOK_URL` and `WEBHOOK_SECRET` to enable signed `POST` delivery; requests use the `x-webhook-signature` HMAC-SHA256 header. DEV_ADMIN can inspect the runtime status and non-secret configuration from the admin dashboard. Webhook failures are logged but do not roll back attendance records.
 
 ## Development
 

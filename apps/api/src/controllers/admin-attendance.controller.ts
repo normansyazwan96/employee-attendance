@@ -26,7 +26,7 @@ export async function getAdminAttendance(request: Request, response: Response): 
   const where = { ...scope, ...(parsed.data.from || parsed.data.to ? { workDate: { ...(parsed.data.from ? { gte: parsed.data.from } : {}), ...(parsed.data.to ? { lte: parsed.data.to } : {}) } } : {}) };
   const [attendance, total] = await Promise.all([prisma.attendanceRecord.findMany({
     where,
-    include: { employee: { include: { user: { select: { email: true } }, schedule: true } } },
+    include: { employee: { include: { user: { select: { username: true } }, schedule: true } } },
     orderBy: [{ workDate: "desc" }, { clockInAt: "desc" }],
     skip: (parsed.data.page - 1) * parsed.data.pageSize,
     take: parsed.data.pageSize,
@@ -42,7 +42,7 @@ export async function getAdminAttendance(request: Request, response: Response): 
       overtimeHours,
       status: record.status,
       scheduleStatus: classifyAttendance(record, record.employee.schedule),
-      employee: { id: record.employee.id, name: `${record.employee.firstName} ${record.employee.lastName}`, email: record.employee.user.email },
+      employee: { id: record.employee.id, name: `${record.employee.firstName} ${record.employee.lastName}`, username: record.employee.user.username },
     };
   }), pagination: { page: parsed.data.page, pageSize: parsed.data.pageSize, total, totalPages: Math.ceil(total / parsed.data.pageSize) } });
 }
@@ -52,10 +52,10 @@ const csv = (value: string | null): string => `"${(value ?? "").replaceAll("\"",
 export async function exportAdminAttendance(request: Request, response: Response): Promise<void> {
   const scoped = await attendanceScope(response, request.query);
   if (!scoped) return;
-  const records = await prisma.attendanceRecord.findMany({ where: scoped.where, include: { employee: { include: { user: { select: { email: true } }, schedule: true } } }, orderBy: [{ workDate: "desc" }, { clockInAt: "desc" }] });
-  const rows = ["Employee,Email,Work date,Clock in,Clock out,Total working hours,Overtime,Attendance status,Schedule status", ...records.map((record) => {
+  const records = await prisma.attendanceRecord.findMany({ where: scoped.where, include: { employee: { include: { user: { select: { username: true } }, schedule: true } } }, orderBy: [{ workDate: "desc" }, { clockInAt: "desc" }] });
+  const rows = ["Employee,Username,Work date,Clock in,Clock out,Total working hours,Overtime,Attendance status,Schedule status", ...records.map((record) => {
     const { totalWorkingHours, overtimeHours } = calculateAttendanceHours(record);
-    return [record.employee.firstName + " " + record.employee.lastName, record.employee.user.email, record.workDate, record.clockInAt.toISOString(), record.clockOutAt?.toISOString() ?? "", totalWorkingHours.toString(), overtimeHours.toString(), record.status, classifyAttendance(record, record.employee.schedule)].map(csv).join(",");
+    return [record.employee.firstName + " " + record.employee.lastName, record.employee.user.username, record.workDate, record.clockInAt.toISOString(), record.clockOutAt?.toISOString() ?? "", totalWorkingHours.toString(), overtimeHours.toString(), record.status, classifyAttendance(record, record.employee.schedule)].map(csv).join(",");
   })];
   response.type("text/csv").attachment("attendance-export.csv").send(rows.join("\r\n"));
 }

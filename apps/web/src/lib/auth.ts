@@ -1,5 +1,5 @@
 export type Role = "EMPLOYEE" | "ADMIN" | "DEV_ADMIN";
-export type SessionUser = { id: string; email: string; role: Role; name: string | null; mustChangePassword: boolean };
+export type SessionUser = { id: string; username: string; role: Role; name: string | null; mustChangePassword: boolean };
 export type Session = { token: string; user: SessionUser };
 import { apiUrl } from "./api";
 
@@ -15,8 +15,8 @@ export function clearSession(): void { localStorage.removeItem(storageKey); }
 export function rolePath(role: Role): string { return role === "DEV_ADMIN" ? "/dev" : role === "ADMIN" ? "/admin" : "/employee"; }
 export function sessionPath(user: SessionUser): string { return user.mustChangePassword ? "/profile" : rolePath(user.role); }
 export function updateSession(token: string, user: SessionUser): void { saveSession({ token, user }); }
-export async function login(email: string, password: string): Promise<Session> {
-  const response = await fetch(`${apiUrl}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+export async function login(username: string, password: string): Promise<Session> {
+  const response = await fetch(`${apiUrl}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
   const body = await response.json() as Session | { error: string };
   if (!response.ok || !("token" in body)) throw new Error("error" in body ? body.error : "Unable to sign in");
   saveSession(body);

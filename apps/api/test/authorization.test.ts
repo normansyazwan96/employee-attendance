@@ -11,7 +11,7 @@ describe("admin authorization boundaries", () => {
   });
 
   it("rejects an employee token before accessing admin data", async () => {
-    const token = createAccessToken({ sub: "employee-1", email: "employee@example.com", role: "EMPLOYEE" });
+    const token = createAccessToken({ sub: "employee-1", username: "employee", role: "EMPLOYEE" });
     const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", `Bearer ${token}`);
     expect(response.status).toBe(403);
     expect(response.body.error).toBe("You do not have access to this resource");
@@ -24,10 +24,10 @@ describe("admin authorization boundaries", () => {
 
   it("limits repeated login attempts", async () => {
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      const response = await request(app).post("/api/v1/auth/login").send({ email: "invalid" });
+      const response = await request(app).post("/api/v1/auth/login").send({ username: "invalid" });
       expect(response.status).toBe(400);
     }
-    const response = await request(app).post("/api/v1/auth/login").send({ email: "invalid" });
+    const response = await request(app).post("/api/v1/auth/login").send({ username: "invalid" });
     expect(response.status).toBe(429);
   });
 });

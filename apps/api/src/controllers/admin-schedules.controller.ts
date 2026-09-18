@@ -14,9 +14,9 @@ const scheduleSchema = z.object({
   isActive: z.boolean(),
 });
 
-const view = (schedule: { id: string; employeeId: string; workDays: number[]; startTime: string; endTime: string; gracePeriodMinutes: number; isActive: boolean; employee: { firstName: string; lastName: string; user: { email: string; clientId: string | null } } }) => ({ id: schedule.id, employeeId: schedule.employeeId, employee: { name: `${schedule.employee.firstName} ${schedule.employee.lastName}`, email: schedule.employee.user.email }, clientId: schedule.employee.user.clientId, workDays: schedule.workDays, startTime: schedule.startTime, endTime: schedule.endTime, gracePeriodMinutes: schedule.gracePeriodMinutes, isActive: schedule.isActive });
+const view = (schedule: { id: string; employeeId: string; workDays: number[]; startTime: string; endTime: string; gracePeriodMinutes: number; isActive: boolean; employee: { firstName: string; lastName: string; user: { username: string; clientId: string | null } } }) => ({ id: schedule.id, employeeId: schedule.employeeId, employee: { name: `${schedule.employee.firstName} ${schedule.employee.lastName}`, username: schedule.employee.user.username }, clientId: schedule.employee.user.clientId, workDays: schedule.workDays, startTime: schedule.startTime, endTime: schedule.endTime, gracePeriodMinutes: schedule.gracePeriodMinutes, isActive: schedule.isActive });
 
-const include = { employee: { include: { user: { select: { email: true, clientId: true } } } } } as const;
+const include = { employee: { include: { user: { select: { username: true, clientId: true } } } } } as const;
 
 export async function getAdminSchedules(_request: Request, response: Response): Promise<void> {
   const context = await getAdminContext(response);
