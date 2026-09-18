@@ -1,8 +1,8 @@
 import { getSession } from "./auth";
 import type { Attendance } from "./attendance";
+import { apiUrl } from "./api";
 
 export type AdminAttendance = Attendance & { employee: { id: string; name: string; email: string } };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export type AttendanceFilters = { from?: string; to?: string; page?: number; pageSize?: number };
 export type AttendancePage = { attendance: AdminAttendance[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } };

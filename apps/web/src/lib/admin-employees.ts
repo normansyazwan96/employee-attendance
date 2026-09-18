@@ -1,8 +1,8 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type AdminEmployee = { id: string; employeeId: string | null; email: string; firstName: string; lastName: string; isActive: boolean; clientId: string | null };
 export type EmployeeInput = { email: string; password: string; firstName: string; lastName: string; clientId?: string };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();

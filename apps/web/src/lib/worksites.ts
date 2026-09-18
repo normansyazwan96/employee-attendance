@@ -1,8 +1,8 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type Worksite = { id: string; name: string; latitude: number; longitude: number; radiusMeters: number; isActive: boolean; createdAt: string; updatedAt: string };
 export type WorksiteInput = Pick<Worksite, "name" | "latitude" | "longitude" | "radiusMeters" | "isActive">;
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();

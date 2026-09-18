@@ -1,8 +1,8 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type AdminSchedule = { id: string; employeeId: string; employee: { name: string; email: string }; clientId: string | null; workDays: number[]; startTime: string; endTime: string; gracePeriodMinutes: number; isActive: boolean };
 export type ScheduleInput = Omit<AdminSchedule, "id" | "employee" | "clientId">;
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();

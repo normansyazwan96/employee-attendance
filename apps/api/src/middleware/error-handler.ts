@@ -9,7 +9,8 @@ export const notFound: RequestHandler = (request, response) => {
   response.status(404).json({ error: `Route ${request.method} ${request.originalUrl} was not found` });
 };
 
-export const errorHandler: ErrorRequestHandler = (error, _request, response) => {
+export const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+  void _next;
   console.error(error);
   response.status(500).json({ error: "An unexpected error occurred" });
 };

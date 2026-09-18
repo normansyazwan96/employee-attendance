@@ -45,20 +45,21 @@ Start PostgreSQL locally:
 docker compose up -d
 npm run db:generate
 npm run db:migrate -- --name init-auth
-npm run db:seed
 ```
+
+To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 12 characters and include uppercase, lowercase, number, and symbol characters.
 
 The Prisma schema contains Client, User, Employee, EmployeeSchedule, AttendanceRecord, Worksite, and AuditLog models. Users support soft deactivation through `isActive`, so employee attendance history is retained when access is disabled. Every role can manage its own profile and password. Admin mutations are recorded in client-scoped audit logs. Admins can assign employee schedules with workdays, start/end times, grace periods, and active state. DEV_ADMIN has the full admin surface across all clients and can choose a client when creating employees. `db:generate` creates Prisma client artifacts, `db:migrate` creates the local database tables, and `db:seed` creates local development accounts and a sample worksite. Open Prisma Studio with `npm run db:studio`.
 
 ## Local development accounts
 
-After `npm run db:seed`, all accounts use the password `ChangeMe123!`:
+The seed creates these accounts with the separate passwords supplied through the environment:
 
-- `john.smith@acme.local` — Employee '12345678'
-- `admin@acme.local` — Admin
-- `devadmin@attendance.local` — Dev Admin
+- `john.smith@acme.local` - Employee
+- `admin@acme.local` - Admin
+- `devadmin@attendance.local` - Dev Admin
 
-Change `JWT_SECRET` in `.env` to a unique random value of at least 32 characters. Set `CLIENT_ORIGINS` to a comma-separated list of trusted web origins before production. Seed credentials are development-only and must be changed before production use.
+Change `JWT_SECRET` in `.env` to a unique random value of at least 32 characters. Set `CLIENT_ORIGINS` to a comma-separated list of trusted web origins before production. Seeded and administrator-created users must replace their temporary password before the rest of the application becomes available.
 
 ## Attendance foundation
 

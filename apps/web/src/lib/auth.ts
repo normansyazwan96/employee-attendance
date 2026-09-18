@@ -1,9 +1,9 @@
 export type Role = "EMPLOYEE" | "ADMIN" | "DEV_ADMIN";
-export type SessionUser = { id: string; email: string; role: Role; name: string | null };
+export type SessionUser = { id: string; email: string; role: Role; name: string | null; mustChangePassword: boolean };
 export type Session = { token: string; user: SessionUser };
+import { apiUrl } from "./api";
 
 const storageKey = "attendance.session";
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export function getSession(): Session | null {
   const raw = localStorage.getItem(storageKey);
@@ -13,6 +13,8 @@ export function getSession(): Session | null {
 export function saveSession(session: Session): void { localStorage.setItem(storageKey, JSON.stringify(session)); }
 export function clearSession(): void { localStorage.removeItem(storageKey); }
 export function rolePath(role: Role): string { return role === "DEV_ADMIN" ? "/dev" : role === "ADMIN" ? "/admin" : "/employee"; }
+export function sessionPath(user: SessionUser): string { return user.mustChangePassword ? "/profile" : rolePath(user.role); }
+export function updateSession(token: string, user: SessionUser): void { saveSession({ token, user }); }
 export async function login(email: string, password: string): Promise<Session> {
   const response = await fetch(`${apiUrl}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
   const body = await response.json() as Session | { error: string };

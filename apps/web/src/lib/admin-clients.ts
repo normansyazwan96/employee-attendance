@@ -1,7 +1,7 @@
 import { getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type AdminClient = { id: string; name: string };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 export async function getAdminClients(): Promise<AdminClient[]> {
   const session = getSession();
   if (!session) throw new Error("Please sign in again");

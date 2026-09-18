@@ -15,6 +15,7 @@ let worksiteBId = "";
 let createdEmployeeId = "";
 
 const worksiteInput = { name: `Client B site ${suffix}`, latitude: 2.9, longitude: 101.6, radiusMeters: 150, isActive: true };
+const temporaryEmployeePassword = "Integration!Pass9042";
 
 function token(sub: string, email: string, role: Role): string {
   return createAccessToken({ sub, email, role });
@@ -70,7 +71,7 @@ describe("admin worksite client isolation", () => {
   it("creates and deactivates an employee without deleting the account", async () => {
     const adminAToken = token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN);
     const email = `employee-${suffix}@example.com`;
-    const created = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ email, password: "ChangeMe123!", firstName: "Test", lastName: "Employee" });
+    const created = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ email, password: temporaryEmployeePassword, firstName: "Test", lastName: "Employee" });
     expect(created.status).toBe(201);
     createdEmployeeId = created.body.employee.id;
     const employeeId = created.body.employee.employeeId as string;
@@ -86,7 +87,7 @@ describe("admin worksite client isolation", () => {
 
     const deactivated = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${adminAToken}`).send({ isActive: false });
     expect(deactivated.status).toBe(200);
-    const login = await request(app).post("/api/v1/auth/login").send({ email, password: "ChangeMe123!" });
+    const login = await request(app).post("/api/v1/auth/login").send({ email, password: temporaryEmployeePassword });
     expect(login.status).toBe(401);
     expect(await prisma.employee.findUnique({ where: { userId: createdEmployeeId } })).not.toBeNull();
     expect(await prisma.auditLog.findFirst({ where: { actorUserId: adminAId, action: "DEACTIVATE", entityType: "Employee", entityId: createdEmployeeId } })).not.toBeNull();

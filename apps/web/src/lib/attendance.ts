@@ -1,10 +1,10 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type ScheduleStatus = "ON_TIME" | "LATE" | "NOT_SCHEDULED" | "NO_SCHEDULE" | "MISSED_CLOCK_OUT";
 export type Attendance = { id: string; workDate: string; clockInAt: string; clockOutAt: string | null; totalWorkingHours?: number; overtimeHours?: number; status: "CLOCKED_IN" | "CLOCKED_OUT"; scheduleStatus?: ScheduleStatus };
 export type Location = { latitude: number; longitude: number; accuracy: number };
 export type LocationStatus = { valid: boolean; reason?: string; worksite?: { id: string; name: string; distanceMeters: number; radiusMeters: number } };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 async function request(path: string, method = "GET", location?: Location): Promise<Attendance | null> {
   const session = getSession();

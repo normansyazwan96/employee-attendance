@@ -9,4 +9,12 @@ describe("application routes", () => {
     render(<BrowserRouter><App /></BrowserRouter>);
     expect(screen.getByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
   });
+
+  it("routes users with temporary passwords to their profile", () => {
+    localStorage.setItem("attendance.session", JSON.stringify({ token: "test", user: { id: "1", email: "employee@example.com", role: "EMPLOYEE", name: "Employee", mustChangePassword: true } }));
+    window.history.pushState({}, "", "/employee");
+    render(<BrowserRouter><App /></BrowserRouter>);
+    expect(window.location.pathname).toBe("/profile");
+    localStorage.clear();
+  });
 });

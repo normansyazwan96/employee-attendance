@@ -2,6 +2,7 @@
   "name": "employee-attendance",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -16,16 +17,21 @@
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace=@attendance/web",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio --schema prisma/schema.prisma"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.0",
-    "prisma": "^6.12.0"
+    "prisma": "6.12.0"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@prisma/client": "6.12.0"
+  },
+  "overrides": {
+    "js-yaml": "4.3.2",
+    "qs": "6.16.0"
   },
   "prisma": { "seed": "tsx prisma/seed.ts" }
 }

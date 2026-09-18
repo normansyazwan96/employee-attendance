@@ -1,7 +1,7 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
 export type AuditEntry = { id: string; actorUserId: string; clientId: string | null; action: string; entityType: string; entityId: string; details: Record<string, unknown> | null; createdAt: string };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 export async function getAdminAudit(): Promise<AuditEntry[]> {
   const session = getSession();

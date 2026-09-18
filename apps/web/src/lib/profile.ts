@@ -1,8 +1,9 @@
 import { clearSession, getSession } from "./auth";
+import { apiUrl } from "./api";
 
-export type Profile = { id: string; email: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string };
+export type Profile = { id: string; email: string; role: "EMPLOYEE" | "ADMIN" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string; mustChangePassword: boolean };
 export type ProfileInput = { email: string; displayName: string | null; firstName?: string; lastName?: string; currentPassword?: string; newPassword?: string };
-const apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+export type ProfileUpdate = { profile: Profile; token?: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();
@@ -15,4 +16,4 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export async function getProfile(): Promise<Profile> { return (await request<{ profile: Profile }>("/api/v1/profile")).profile; }
-export async function updateProfile(input: ProfileInput): Promise<Profile> { return (await request<{ profile: Profile }>("/api/v1/profile", { method: "PATCH", body: JSON.stringify(input) })).profile; }
+export async function updateProfile(input: ProfileInput): Promise<ProfileUpdate> { return request<ProfileUpdate>("/api/v1/profile", { method: "PATCH", body: JSON.stringify(input) }); }

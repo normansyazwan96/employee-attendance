@@ -45,7 +45,7 @@ export async function createAdminEmployee(request: Request, response: Response):
   if (!(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) { response.status(400).json({ error: "Client not found" }); return; }
   try {
     const passwordHash = await hashPassword(parsed.data.password);
-    const user = await prisma.user.create({ data: { email: parsed.data.email, passwordHash, role: Role.EMPLOYEE, clientId, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } } }, include: { employee: true } });
+    const user = await prisma.user.create({ data: { email: parsed.data.email, passwordHash, mustChangePassword: true, role: Role.EMPLOYEE, clientId, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } } }, include: { employee: true } });
     await recordAudit({ actorUserId: auth.sub, clientId, action: "CREATE", entityType: "Employee", entityId: user.id, details: { email: user.email, clientId } });
     response.status(201).json({ employee: employeeView(user) });
   } catch (error: unknown) {

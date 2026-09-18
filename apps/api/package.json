@@ -13,7 +13,7 @@
     "test:integration": "vitest run test/admin-worksites.integration.test.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "6.12.0",
     "@types/helmet": "^0.0.48",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
@@ -32,6 +32,6 @@
     "tsx": "^4.20.3",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.37.0",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11"
   }
 }

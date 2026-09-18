@@ -6,10 +6,10 @@ import { getAdminClients } from "../controllers/admin-clients.controller.js";
 import { getAdminSchedules, upsertAdminSchedule } from "../controllers/admin-schedules.controller.js";
 import { createAdminEmployee, getAdminEmployees, updateAdminEmployeeStatus } from "../controllers/admin-employees.controller.js";
 import { createAdminWorksite, deleteAdminWorksite, getAdminWorksites, updateAdminWorksite } from "../controllers/admin-worksites.controller.js";
-import { requireAuth, requireRoles } from "../middleware/auth.js";
+import { requireAuth, requireCurrentSession, requirePasswordChangeCompleted, requireRoles } from "../middleware/auth.js";
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireRoles(Role.ADMIN, Role.DEV_ADMIN));
+adminRouter.use("/admin", requireAuth, requireRoles(Role.ADMIN, Role.DEV_ADMIN), requireCurrentSession, requirePasswordChangeCompleted);
 adminRouter.get("/admin/attendance", getAdminAttendance);
 adminRouter.get("/admin/attendance/export", exportAdminAttendance);
 adminRouter.get("/admin/audit", getAdminAudit);
