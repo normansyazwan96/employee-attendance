@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { prisma } from "../services/prisma.js";
 import { calculateAttendanceHours, classifyAttendance } from "../services/attendance-rules.js";
 import { z } from "zod";
+import { getAdminContext } from "../services/admin-scope.js";
 
 const querySchema = z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) });
 const exportQuerySchema = querySchema.pick({ from: true, to: true });
@@ -10,20 +11,18 @@ const exportQuerySchema = querySchema.pick({ from: true, to: true });
 async function attendanceScope(response: Response, query: { from?: string; to?: string }) {
   const parsed = exportQuerySchema.safeParse(query);
   if (!parsed.success || (parsed.data.from && parsed.data.to && parsed.data.from > parsed.data.to)) { response.status(400).json({ error: "Use valid date filters" }); return null; }
-  const auth = response.locals.auth as { sub: string; role: Role };
-  const user = await prisma.user.findUnique({ where: { id: auth.sub }, select: { clientId: true } });
-  if (!user) { response.status(401).json({ error: "Authentication is required" }); return null; }
-  const scope = auth.role === Role.DEV_ADMIN ? {} : { employee: { user: { clientId: user.clientId } } };
+  const context = await getAdminContext(response);
+  if (!context) { response.status(401).json({ error: "A client account is required" }); return null; }
+  const scope = context.auth.role === Role.DEV_ADMIN ? {} : { employee: { user: context.employeeUserWhere } };
   return { parsed: parsed.data, where: { ...scope, ...(parsed.data.from || parsed.data.to ? { workDate: { ...(parsed.data.from ? { gte: parsed.data.from } : {}), ...(parsed.data.to ? { lte: parsed.data.to } : {}) } } : {}) } };
 }
 
 export async function getAdminAttendance(request: Request, response: Response): Promise<void> {
   const parsed = querySchema.safeParse(request.query);
   if (!parsed.success || (parsed.data.from && parsed.data.to && parsed.data.from > parsed.data.to)) { response.status(400).json({ error: "Use valid date filters" }); return; }
-  const auth = response.locals.auth as { sub: string; role: Role };
-  const user = await prisma.user.findUnique({ where: { id: auth.sub }, select: { clientId: true } });
-  if (!user) { response.status(401).json({ error: "Authentication is required" }); return; }
-  const scope = auth.role === Role.DEV_ADMIN ? {} : { employee: { user: { clientId: user.clientId } } };
+  const context = await getAdminContext(response);
+  if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
+  const scope = context.auth.role === Role.DEV_ADMIN ? {} : { employee: { user: context.employeeUserWhere } };
   const where = { ...scope, ...(parsed.data.from || parsed.data.to ? { workDate: { ...(parsed.data.from ? { gte: parsed.data.from } : {}), ...(parsed.data.to ? { lte: parsed.data.to } : {}) } } : {}) };
   const [attendance, total] = await Promise.all([prisma.attendanceRecord.findMany({
     where,

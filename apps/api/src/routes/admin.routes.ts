@@ -7,6 +7,7 @@ import { getAdminSchedules, upsertAdminSchedule } from "../controllers/admin-sch
 import { createAdminEmployee, getAdminEmployees, updateAdminEmployeeStatus } from "../controllers/admin-employees.controller.js";
 import { createAdminWorksite, deleteAdminWorksite, getAdminWorksites, updateAdminWorksite } from "../controllers/admin-worksites.controller.js";
 import { requireAuth, requireCurrentSession, requirePasswordChangeCompleted, requireRoles } from "../middleware/auth.js";
+import { createAdminAccount, getAdminAccounts, resetManagedAccountPassword } from "../controllers/admin-accounts.controller.js";
 
 export const adminRouter = Router();
 adminRouter.use("/admin", requireAuth, requireRoles(Role.ADMIN, Role.DEV_ADMIN), requireCurrentSession, requirePasswordChangeCompleted);
@@ -14,6 +15,9 @@ adminRouter.get("/admin/attendance", getAdminAttendance);
 adminRouter.get("/admin/attendance/export", exportAdminAttendance);
 adminRouter.get("/admin/audit", getAdminAudit);
 adminRouter.get("/admin/clients", getAdminClients);
+adminRouter.get("/admin/admins", requireRoles(Role.DEV_ADMIN), getAdminAccounts);
+adminRouter.post("/admin/admins", requireRoles(Role.DEV_ADMIN), createAdminAccount);
+adminRouter.patch("/admin/accounts/:id/password", resetManagedAccountPassword);
 adminRouter.get("/admin/schedules", getAdminSchedules);
 adminRouter.put("/admin/schedules", upsertAdminSchedule);
 adminRouter.get("/admin/worksites", getAdminWorksites);

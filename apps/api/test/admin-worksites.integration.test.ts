@@ -9,8 +9,10 @@ const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 let clientAId = "";
 let clientBId = "";
 let adminAId = "";
+let adminA2Id = "";
 let adminBId = "";
 let devAdminId = "";
+let createdAdminId = "";
 let worksiteBId = "";
 let createdEmployeeId = "";
 
@@ -30,18 +32,19 @@ beforeAll(async () => {
   clientBId = clientB.id;
   const users = await prisma.$transaction([
     prisma.user.create({ data: { email: `admin-a-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
+    prisma.user.create({ data: { email: `admin-a2-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientAId } }),
     prisma.user.create({ data: { email: `admin-b-${suffix}@example.com`, passwordHash: "test", role: Role.ADMIN, clientId: clientBId } }),
     prisma.user.create({ data: { email: `dev-${suffix}@example.com`, passwordHash: "test", role: Role.DEV_ADMIN } }),
   ]);
-  [adminAId, adminBId, devAdminId] = users.map((user) => user.id);
+  [adminAId, adminA2Id, adminBId, devAdminId] = users.map((user) => user.id);
   const worksite = await prisma.worksite.create({ data: { ...worksiteInput, clientId: clientBId } });
   worksiteBId = worksite.id;
 });
 
 afterAll(async () => {
-  await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [adminAId, adminBId, devAdminId] } } });
+  await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [adminAId, adminA2Id, adminBId, devAdminId] } } });
   await prisma.worksite.deleteMany({ where: { id: worksiteBId } });
-  await prisma.user.deleteMany({ where: { id: { in: [adminAId, adminBId, devAdminId, createdEmployeeId] } } });
+  await prisma.user.deleteMany({ where: { id: { in: [adminAId, adminA2Id, adminBId, devAdminId, createdEmployeeId, createdAdminId] } } });
   await prisma.client.deleteMany({ where: { id: { in: [clientAId, clientBId] } } });
   await prisma.$disconnect();
 });
@@ -76,21 +79,58 @@ describe("admin worksite client isolation", () => {
     createdEmployeeId = created.body.employee.id;
     const employeeId = created.body.employee.employeeId as string;
 
+    const sameClientEmployees = await request(app).get("/api/v1/admin/employees").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`);
+    expect(sameClientEmployees.status).toBe(200);
+    expect(sameClientEmployees.body.employees).toEqual([]);
+
     const schedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${adminAToken}`).send({ employeeId, workDays: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", gracePeriodMinutes: 10, isActive: true });
     expect(schedule.status).toBe(200);
     expect(schedule.body.schedule.employeeId).toBe(employeeId);
     const crossClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}@example.com`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
     expect(crossClientSchedule.status).toBe(404);
+    const sameClientSchedule = await request(app).put("/api/v1/admin/schedules").set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ employeeId, workDays: [1], startTime: "10:00", endTime: "18:00", gracePeriodMinutes: 0, isActive: true });
+    expect(sameClientSchedule.status).toBe(404);
 
     const crossClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminBId, `admin-b-${suffix}@example.com`, Role.ADMIN)}`).send({ isActive: false });
     expect(crossClient.status).toBe(404);
+    const sameClient = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ isActive: false });
+    expect(sameClient.status).toBe(404);
+
+    const resetPassword = "Reset!Employee9042";
+    const forbiddenReset = await request(app).patch(`/api/v1/admin/accounts/${createdEmployeeId}/password`).set("Authorization", `Bearer ${token(adminA2Id, `admin-a2-${suffix}@example.com`, Role.ADMIN)}`).send({ password: resetPassword });
+    expect(forbiddenReset.status).toBe(404);
+    const reset = await request(app).patch(`/api/v1/admin/accounts/${createdEmployeeId}/password`).set("Authorization", `Bearer ${adminAToken}`).send({ password: resetPassword });
+    expect(reset.status).toBe(200);
+    expect((await request(app).post("/api/v1/auth/login").send({ email, password: temporaryEmployeePassword })).status).toBe(401);
+    const resetLogin = await request(app).post("/api/v1/auth/login").send({ email, password: resetPassword });
+    expect(resetLogin.status).toBe(200);
+    expect(resetLogin.body.user.mustChangePassword).toBe(true);
 
     const deactivated = await request(app).patch(`/api/v1/admin/employees/${createdEmployeeId}/status`).set("Authorization", `Bearer ${adminAToken}`).send({ isActive: false });
     expect(deactivated.status).toBe(200);
-    const login = await request(app).post("/api/v1/auth/login").send({ email, password: temporaryEmployeePassword });
+    const login = await request(app).post("/api/v1/auth/login").send({ email, password: resetPassword });
     expect(login.status).toBe(401);
     expect(await prisma.employee.findUnique({ where: { userId: createdEmployeeId } })).not.toBeNull();
     expect(await prisma.auditLog.findFirst({ where: { actorUserId: adminAId, action: "DEACTIVATE", entityType: "Employee", entityId: createdEmployeeId } })).not.toBeNull();
+  });
+
+  it("allows only dev admins to create and reset administrator accounts", async () => {
+    const input = { email: `created-admin-${suffix}@example.com`, displayName: "Created Admin", clientId: clientBId, password: "Create!Admin9042" };
+    const forbidden = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}@example.com`, Role.ADMIN)}`).send(input);
+    expect(forbidden.status).toBe(403);
+
+    const created = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`).send(input);
+    expect(created.status).toBe(201);
+    createdAdminId = created.body.admin.id;
+    expect(created.body.admin).toMatchObject({ email: input.email, role: Role.ADMIN, clientId: clientBId });
+
+    const replacement = "Reset!Admin9042";
+    const reset = await request(app).patch(`/api/v1/admin/accounts/${createdAdminId}/password`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}@example.com`, Role.DEV_ADMIN)}`).send({ password: replacement });
+    expect(reset.status).toBe(200);
+    expect((await request(app).post("/api/v1/auth/login").send({ email: input.email, password: input.password })).status).toBe(401);
+    const login = await request(app).post("/api/v1/auth/login").send({ email: input.email, password: replacement });
+    expect(login.status).toBe(200);
+    expect(login.body.user.mustChangePassword).toBe(true);
   });
 
   it("scopes audit history by client", async () => {

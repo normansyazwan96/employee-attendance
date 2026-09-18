@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../services/prisma.js";
 import { recordAudit } from "../services/audit.js";
+import { getAdminContext } from "../services/admin-scope.js";
 
 const scheduleSchema = z.object({
   employeeId: z.string().min(1),
@@ -13,32 +14,23 @@ const scheduleSchema = z.object({
   isActive: z.boolean(),
 });
 
-type Auth = { sub: string; role: Role };
-
-async function scope(response: Response): Promise<string | null | undefined> {
-  const auth = response.locals.auth as Auth;
-  if (auth.role === Role.DEV_ADMIN) return undefined;
-  const user = await prisma.user.findUnique({ where: { id: auth.sub }, select: { clientId: true } });
-  return user?.clientId ?? null;
-}
-
 const view = (schedule: { id: string; employeeId: string; workDays: number[]; startTime: string; endTime: string; gracePeriodMinutes: number; isActive: boolean; employee: { firstName: string; lastName: string; user: { email: string; clientId: string | null } } }) => ({ id: schedule.id, employeeId: schedule.employeeId, employee: { name: `${schedule.employee.firstName} ${schedule.employee.lastName}`, email: schedule.employee.user.email }, clientId: schedule.employee.user.clientId, workDays: schedule.workDays, startTime: schedule.startTime, endTime: schedule.endTime, gracePeriodMinutes: schedule.gracePeriodMinutes, isActive: schedule.isActive });
 
 const include = { employee: { include: { user: { select: { email: true, clientId: true } } } } } as const;
 
 export async function getAdminSchedules(_request: Request, response: Response): Promise<void> {
-  const clientId = await scope(response);
-  if (clientId === null) { response.status(401).json({ error: "A client account is required" }); return; }
-  const schedules = await prisma.employeeSchedule.findMany({ where: clientId ? { employee: { user: { clientId, role: Role.EMPLOYEE } } } : undefined, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
+  const context = await getAdminContext(response);
+  if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
+  const schedules = await prisma.employeeSchedule.findMany({ where: context.auth.role === Role.DEV_ADMIN ? undefined : { employee: { user: context.employeeUserWhere } }, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
   response.json({ schedules: schedules.map(view) });
 }
 
 export async function upsertAdminSchedule(request: Request, response: Response): Promise<void> {
-  const clientId = await scope(response);
-  if (clientId === null) { response.status(401).json({ error: "A client account is required" }); return; }
+  const context = await getAdminContext(response);
+  if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
   const parsed = scheduleSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter an employee, workdays, valid times, and a grace period" }); return; }
-  const employee = await prisma.employee.findFirst({ where: { id: parsed.data.employeeId, user: { role: Role.EMPLOYEE, ...(clientId ? { clientId } : {}) } }, select: { id: true, user: { select: { clientId: true } } } });
+  const employee = await prisma.employee.findFirst({ where: { id: parsed.data.employeeId, user: context.employeeUserWhere }, select: { id: true, user: { select: { clientId: true } } } });
   if (!employee) { response.status(404).json({ error: "Employee not found" }); return; }
   const { employeeId, ...data } = parsed.data;
   const schedule = await prisma.employeeSchedule.upsert({ where: { employeeId }, create: { employeeId, ...data }, update: data, include });

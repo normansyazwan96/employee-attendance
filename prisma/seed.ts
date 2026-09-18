@@ -35,7 +35,9 @@ async function main(): Promise<void> {
       create: { ...account, passwordHash, mustChangePassword: true },
     });
   }
+  const seededAdmin = await prisma.user.findUniqueOrThrow({ where: { email: "admin@acme.local" } });
   const john = await prisma.user.findUniqueOrThrow({ where: { email: "john.smith@acme.local" } });
+  await prisma.user.update({ where: { id: john.id }, data: { createdByUserId: seededAdmin.id } });
   const johnEmployee = await prisma.employee.upsert({ where: { userId: john.id }, update: { firstName: "John", lastName: "Smith" }, create: { userId: john.id, firstName: "John", lastName: "Smith" } });
 
   const attendanceSamples = [

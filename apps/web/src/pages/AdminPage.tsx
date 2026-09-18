@@ -7,6 +7,8 @@ import { exportAdminAttendance, getAdminAttendance, type AdminAttendance, type A
 import { scheduleStatusLabel } from "../lib/i18n";
 import { useLanguage } from "../lib/language-context";
 import { createWorksite, deleteWorksite, getWorksites, updateWorksite, type Worksite, type WorksiteInput } from "../lib/worksites";
+import { AdminManagement } from "../components/AdminManagement";
+import { getSession } from "../lib/auth";
 
 const emptyWorksite: WorksiteInput = { name: "", latitude: 40.7128, longitude: -74.006, radiusMeters: 150, isActive: true };
 const WorksiteMap = lazy(() => import("../components/WorksiteMap").then(({ WorksiteMap: map }) => ({ default: map })));
@@ -22,6 +24,7 @@ export function AdminPage(): JSX.Element {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const isDevAdmin = getSession()?.user.role === "DEV_ADMIN";
   const time = (value: string | null): string => value ? new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "--";
   const date = (value: string): string => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
 
@@ -79,6 +82,7 @@ export function AdminPage(): JSX.Element {
       {worksites.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("noWorksitesConfiguredYet")}</div>}
     </section>
 
+    {isDevAdmin && <AdminManagement />}
     <div id="employees"><EmployeeManagement /></div>
     <ScheduleManagement />
     <div id="audit"><AuditHistory /></div>
