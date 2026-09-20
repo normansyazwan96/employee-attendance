@@ -15,6 +15,7 @@ let devAdminId = "";
 let createdAdminId = "";
 let worksiteBId = "";
 let createdEmployeeId = "";
+let createdAdminEmployeeId = "";
 
 const worksiteInput = { name: `Client B site ${suffix}`, latitude: 2.9, longitude: 101.6, radiusMeters: 150, isActive: true };
 const temporaryEmployeePassword = "Integration!Pass9042";
@@ -44,7 +45,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [adminAId, adminA2Id, adminBId, devAdminId] } } });
   await prisma.worksite.deleteMany({ where: { id: worksiteBId } });
-  await prisma.user.deleteMany({ where: { id: { in: [adminAId, adminA2Id, adminBId, devAdminId, createdEmployeeId, createdAdminId] } } });
+  await prisma.user.deleteMany({ where: { id: { in: [adminAId, adminA2Id, adminBId, devAdminId, createdEmployeeId, createdAdminId, createdAdminEmployeeId] } } });
   await prisma.client.deleteMany({ where: { id: { in: [clientAId, clientBId] } } });
   await prisma.$disconnect();
 });
@@ -74,6 +75,10 @@ describe("admin worksite client isolation", () => {
   it("creates and deactivates an employee without deleting the account", async () => {
     const adminAToken = token(adminAId, `admin-a-${suffix}`, Role.ADMIN);
     const username = `employee-${suffix}`;
+    const invalid = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ username: "@", password: temporaryEmployeePassword, firstName: "Test", lastName: "Employee" });
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error).toContain("Username");
+
     const created = await request(app).post("/api/v1/admin/employees").set("Authorization", `Bearer ${adminAToken}`).send({ username, password: temporaryEmployeePassword, firstName: "Test", lastName: "Employee" });
     expect(created.status).toBe(201);
     createdEmployeeId = created.body.employee.id;
@@ -124,6 +129,16 @@ describe("admin worksite client isolation", () => {
     createdAdminId = created.body.admin.id;
     expect(created.body.admin).toMatchObject({ username: input.username, role: Role.ADMIN });
     expect(created.body.admin.clientId).toEqual(expect.any(String));
+
+    const employee = await request(app)
+      .post("/api/v1/admin/employees")
+      .set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`)
+      .send({ username: `owned-employee-${suffix}`, password: temporaryEmployeePassword, firstName: "Owned", lastName: "Employee", ownerAdminId: createdAdminId });
+    expect(employee.status).toBe(201);
+    createdAdminEmployeeId = employee.body.employee.id;
+    expect(employee.body.employee.ownerAdmin).toMatchObject({ id: createdAdminId, username: input.username });
+    const ownedEmployee = await prisma.user.findUnique({ where: { id: createdAdminEmployeeId }, select: { clientId: true, createdByUserId: true } });
+    expect(ownedEmployee).toMatchObject({ clientId: created.body.admin.clientId, createdByUserId: createdAdminId });
 
     const replacement = "Reset!Admin9042";
     const reset = await request(app).patch(`/api/v1/admin/accounts/${createdAdminId}/password`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ password: replacement });

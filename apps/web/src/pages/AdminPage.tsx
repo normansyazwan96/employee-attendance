@@ -25,6 +25,7 @@ export function AdminPage(): JSX.Element {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [adminAccountsVersion, setAdminAccountsVersion] = useState(0);
   const isDevAdmin = getSession()?.user.role === "DEV_ADMIN";
   const time = (value: string | null): string => value ? new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "--";
   const date = (value: string): string => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
@@ -83,9 +84,9 @@ export function AdminPage(): JSX.Element {
       {worksites.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("noWorksitesConfiguredYet")}</div>}
     </section>
 
-    {isDevAdmin && <AdminManagement />}
+    {isDevAdmin && <AdminManagement onAccountsChanged={() => setAdminAccountsVersion((current) => current + 1)} />}
     {isDevAdmin && <WebhookDetails />}
-    <div id="employees"><EmployeeManagement /></div>
+    <div id="employees"><EmployeeManagement adminAccountsVersion={adminAccountsVersion} /></div>
     <ScheduleManagement />
     <div id="audit"><AuditHistory /></div>
     <button type="button" onClick={() => void exportAttendance()} disabled={exporting} className="mt-4 h-10 rounded-lg bg-ink px-3 text-sm font-bold text-white disabled:opacity-50">{exporting ? t("exporting") : t("exportCsv")}</button>

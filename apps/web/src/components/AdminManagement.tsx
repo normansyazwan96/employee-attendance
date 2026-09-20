@@ -11,7 +11,7 @@ import { useLanguage } from "../lib/language-context";
 
 const emptyForm: AdminAccountInput = { username: "", displayName: "", password: "" };
 
-export function AdminManagement(): JSX.Element {
+export function AdminManagement({ onAccountsChanged }: { onAccountsChanged?: () => void }): JSX.Element {
   const { t } = useLanguage();
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [form, setForm] = useState<AdminAccountInput>({ ...emptyForm });
@@ -41,6 +41,7 @@ export function AdminManagement(): JSX.Element {
       setAdmins((current) => [...current, admin].sort((first, second) => first.username.localeCompare(second.username)));
       setForm({ ...emptyForm });
       setMessage(t("adminCreated"));
+      onAccountsChanged?.();
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : t("unableToCreateAdmin"));
     } finally {
@@ -54,6 +55,7 @@ export function AdminManagement(): JSX.Element {
     try {
       const updated = await updateAdminAccountStatus(admin.id, !admin.isActive);
       setAdmins((current) => current.map((item) => item.id === updated.id ? updated : item));
+      onAccountsChanged?.();
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : t("unableToUpdateAdmin"));
     }

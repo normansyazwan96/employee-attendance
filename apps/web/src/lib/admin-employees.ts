@@ -1,8 +1,9 @@
 import { clearSession, getSession } from "./auth";
 import { apiUrl } from "./api";
 
-export type AdminEmployee = { id: string; employeeId: string | null; username: string; firstName: string; lastName: string; isActive: boolean; clientId: string | null };
-export type EmployeeInput = { username: string; password: string; firstName: string; lastName: string; clientId?: string };
+export type EmployeeOwnerAdmin = { id: string; username: string; displayName: string | null };
+export type AdminEmployee = { id: string; employeeId: string | null; username: string; firstName: string; lastName: string; isActive: boolean; clientId: string | null; ownerAdmin: EmployeeOwnerAdmin | null };
+export type EmployeeInput = { username: string; password: string; firstName: string; lastName: string; ownerAdminId?: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const session = getSession();
