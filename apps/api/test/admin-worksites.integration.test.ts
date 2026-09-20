@@ -169,9 +169,15 @@ describe("admin worksite client isolation", () => {
   it("allows every authenticated role to read and update its profile", async () => {
     const response = await request(app).get("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`);
     expect(response.status).toBe(200);
-    const updated = await request(app).patch("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ username: `dev-${suffix}`, displayName: "Platform Owner" });
+    const updatedUsername = `dev-renamed-${suffix}`;
+    const updated = await request(app).patch("/api/v1/profile").set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ username: updatedUsername, displayName: "Platform Owner" });
     expect(updated.status).toBe(200);
+    expect(updated.body.profile.username).toBe(updatedUsername);
     expect(updated.body.profile.displayName).toBe("Platform Owner");
+    expect(updated.body.token).toEqual(expect.any(String));
+    const refreshed = await request(app).get("/api/v1/profile").set("Authorization", `Bearer ${updated.body.token}`);
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.profile.username).toBe(updatedUsername);
   });
 
   it("exposes webhook configuration details only to dev admins", async () => {

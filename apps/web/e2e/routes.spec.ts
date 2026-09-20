@@ -8,6 +8,7 @@ test("login page is available", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   await expect(page.getByLabel("Username")).toBeVisible();
+  await expect(page.getByLabel("Username")).toHaveAttribute("type", "text");
 });
 
 test("admin can open employee and audit management", async ({ page }) => {
