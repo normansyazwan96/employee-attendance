@@ -5,7 +5,7 @@ import { prisma } from "../services/prisma.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { createAccessToken } from "../utils/token.js";
 
-const strongPassword = z.string().min(12).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
+const strongPassword = z.string().min(8).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
 const username = z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).transform((value) => value.toLowerCase());
 const profileSchema = z.object({ username, displayName: z.string().trim().min(1).max(120).nullable(), firstName: z.string().trim().min(1).max(80).optional(), lastName: z.string().trim().min(1).max(80).optional(), currentPassword: z.string().min(1).optional(), newPassword: strongPassword.optional() });
 
@@ -19,7 +19,7 @@ export async function getProfile(_request: Request, response: Response): Promise
 
 export async function updateProfile(request: Request, response: Response): Promise<void> {
   const parsed = profileSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "Enter valid profile details and use a password of at least 12 characters with uppercase, lowercase, number, and symbol characters" }); return; }
+  if (!parsed.success) { response.status(400).json({ error: "Enter valid profile details and use a password of at least 8 characters with uppercase, lowercase, number, and symbol characters" }); return; }
   const existing = await prisma.user.findUnique({ where: { id: response.locals.auth.sub }, include: { employee: true } });
   if (!existing) { response.status(404).json({ error: "Profile not found" }); return; }
   if (existing.mustChangePassword && !parsed.data.newPassword) { response.status(400).json({ error: "You must set a new password before continuing" }); return; }

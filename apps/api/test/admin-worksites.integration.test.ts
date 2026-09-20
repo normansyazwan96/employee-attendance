@@ -18,7 +18,7 @@ let createdEmployeeId = "";
 let createdAdminEmployeeId = "";
 
 const worksiteInput = { name: `Client B site ${suffix}`, latitude: 2.9, longitude: 101.6, radiusMeters: 150, isActive: true };
-const temporaryEmployeePassword = "Integration!Pass9042";
+const temporaryEmployeePassword = "Aa1!5678";
 
 function token(sub: string, username: string, role: Role): string {
   return createAccessToken({ sub, username, role });
@@ -120,7 +120,7 @@ describe("admin worksite client isolation", () => {
   });
 
   it("allows only dev admins to create and reset administrator accounts", async () => {
-    const input = { username: `created-admin-${suffix}`, displayName: "Created Admin", password: "Create!Admin9042" };
+    const input = { username: `created-admin-${suffix}`, displayName: "Created Admin", password: "Bb2@5678" };
     const forbidden = await request(app).post("/api/v1/admin/admins").set("Authorization", `Bearer ${token(adminAId, `admin-a-${suffix}`, Role.ADMIN)}`).send(input);
     expect(forbidden.status).toBe(403);
 
@@ -140,7 +140,7 @@ describe("admin worksite client isolation", () => {
     const ownedEmployee = await prisma.user.findUnique({ where: { id: createdAdminEmployeeId }, select: { clientId: true, createdByUserId: true } });
     expect(ownedEmployee).toMatchObject({ clientId: created.body.admin.clientId, createdByUserId: createdAdminId });
 
-    const replacement = "Reset!Admin9042";
+    const replacement = "Cc3#5678";
     const reset = await request(app).patch(`/api/v1/admin/accounts/${createdAdminId}/password`).set("Authorization", `Bearer ${token(devAdminId, `dev-${suffix}`, Role.DEV_ADMIN)}`).send({ password: replacement });
     expect(reset.status).toBe(200);
     expect((await request(app).post("/api/v1/auth/login").send({ username: input.username, password: input.password })).status).toBe(401);

@@ -47,7 +47,7 @@ npm run db:generate
 npm run db:migrate -- --name init-auth
 ```
 
-To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 12 characters and include uppercase, lowercase, number, and symbol characters.
+To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 8 characters and include uppercase, lowercase, number, and symbol characters.
 
 The Prisma schema contains Client, User, Employee, EmployeeSchedule, AttendanceRecord, Worksite, and AuditLog models. Users sign in with a unique username and support soft deactivation through `isActive`, so attendance history is retained when access is disabled. Every role can manage its own profile and password. Admin mutations are recorded in audit logs. An ADMIN can create employees and manage only the employees it created, including their status, temporary-password resets, schedules, attendance, and exports. DEV_ADMIN has the full admin surface across all clients and can create, deactivate, reactivate, and reset client administrator accounts. Every administrator-issued temporary password must be changed at the next login. `db:generate` creates Prisma client artifacts, `db:migrate` creates the local database tables, and `db:seed` creates local development accounts and a sample worksite. Open Prisma Studio with `npm run db:studio`.
 

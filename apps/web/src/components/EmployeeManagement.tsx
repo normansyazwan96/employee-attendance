@@ -6,7 +6,7 @@ import { useLanguage } from "../lib/language-context";
 
 const emptyForm: EmployeeInput = { username: "", password: "", firstName: "", lastName: "", ownerAdminId: "" };
 
-export function EmployeeManagement({ adminAccountsVersion = 0 }: { adminAccountsVersion?: number }): JSX.Element {
+export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdminId = "" }: { adminAccountsVersion?: number; preferredOwnerAdminId?: string }): JSX.Element {
   const { t } = useLanguage();
   const isDevAdmin = getSession()?.user.role === "DEV_ADMIN";
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
@@ -26,13 +26,15 @@ export function EmployeeManagement({ adminAccountsVersion = 0 }: { adminAccounts
         setAdmins(activeAdmins);
         setForm((current) => ({
           ...current,
-          ownerAdminId: activeAdmins.some((admin) => admin.id === current.ownerAdminId)
+          ownerAdminId: activeAdmins.some((admin) => admin.id === preferredOwnerAdminId)
+            ? preferredOwnerAdminId
+            : activeAdmins.some((admin) => admin.id === current.ownerAdminId)
             ? current.ownerAdminId
             : activeAdmins[0]?.id ?? "",
         }));
       })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t("unableToLoadEmployees")));
-  }, [adminAccountsVersion, isDevAdmin, t]);
+  }, [adminAccountsVersion, isDevAdmin, preferredOwnerAdminId, t]);
 
   function change(field: keyof EmployeeInput, value: string): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -104,7 +106,7 @@ export function EmployeeManagement({ adminAccountsVersion = 0 }: { adminAccounts
           <input required type="text" inputMode="text" minLength={3} maxLength={40} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autoComplete="username" value={form.username} onChange={(event) => change("username", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
         </label>
         <label className="mt-3 block text-sm font-semibold text-slate-700">{t("temporaryPassword")}
-          <input required minLength={12} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => change("password", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
+          <input required minLength={8} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => change("password", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
         </label>
         <p className="mt-2 text-xs leading-5 text-slate-500">{t("newPasswordRequirements")}</p>
         {isDevAdmin && <label className="mt-3 block text-sm font-semibold text-slate-700">{t("administrator")}
@@ -134,7 +136,7 @@ export function EmployeeManagement({ adminAccountsVersion = 0 }: { adminAccounts
           </div>
           {resetTarget === employee.id && <form onSubmit={(event) => void reset(event, employee)} className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row">
             <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">{t("newTemporaryPassword")}
-              <input required minLength={12} type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
+              <input required minLength={8} type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
             </label>
             <button disabled={saving} className="h-11 self-end rounded-xl bg-ink px-4 text-sm font-bold text-white disabled:opacity-60">{t("setPassword")}</button>
           </form>}

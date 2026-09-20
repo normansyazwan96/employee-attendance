@@ -13,8 +13,8 @@ async function hashPassword(password: string): Promise<string> {
 
 function seedPassword(name: string): string {
   const value = process.env[name];
-  if (!value || value.length < 12 || !/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
-    throw new Error(`${name} must be at least 12 characters and include uppercase, lowercase, number, and symbol characters`);
+  if (!value || value.length < 8 || !/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+    throw new Error(`${name} must be at least 8 characters and include uppercase, lowercase, number, and symbol characters`);
   }
   return value;
 }

@@ -6,7 +6,7 @@ import { recordAudit } from "../services/audit.js";
 import { prisma } from "../services/prisma.js";
 import { hashPassword } from "../utils/password.js";
 
-const strongPassword = z.string().min(12).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
+const strongPassword = z.string().min(8).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
 const adminSchema = z.object({
   username: z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).transform((value) => value.toLowerCase()),
   displayName: z.string().trim().min(1).max(120),
@@ -50,7 +50,7 @@ export async function resetManagedAccountPassword(request: Request, response: Re
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
   const parsed = resetSchema.safeParse(request.body);
-  if (!parsed.success) { response.status(400).json({ error: "Use a password of at least 12 characters with uppercase, lowercase, number, and symbol characters" }); return; }
+  if (!parsed.success) { response.status(400).json({ error: "Use a password of at least 8 characters with uppercase, lowercase, number, and symbol characters" }); return; }
   const id = String(request.params.id);
   const target = await prisma.user.findFirst({
     where: context.auth.role === Role.DEV_ADMIN

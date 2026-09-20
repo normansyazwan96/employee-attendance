@@ -11,7 +11,7 @@ import { useLanguage } from "../lib/language-context";
 
 const emptyForm: AdminAccountInput = { username: "", displayName: "", password: "" };
 
-export function AdminManagement({ onAccountsChanged }: { onAccountsChanged?: () => void }): JSX.Element {
+export function AdminManagement({ onAccountsChanged, onAdminCreated }: { onAccountsChanged?: () => void; onAdminCreated?: (adminId: string) => void }): JSX.Element {
   const { t } = useLanguage();
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [form, setForm] = useState<AdminAccountInput>({ ...emptyForm });
@@ -41,6 +41,7 @@ export function AdminManagement({ onAccountsChanged }: { onAccountsChanged?: () 
       setAdmins((current) => [...current, admin].sort((first, second) => first.username.localeCompare(second.username)));
       setForm({ ...emptyForm });
       setMessage(t("adminCreated"));
+      onAdminCreated?.(admin.id);
       onAccountsChanged?.();
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : t("unableToCreateAdmin"));
@@ -95,7 +96,7 @@ export function AdminManagement({ onAccountsChanged }: { onAccountsChanged?: () 
           <input required minLength={3} maxLength={40} pattern="[A-Za-z0-9][A-Za-z0-9._-]*" autoComplete="username" value={form.username} onChange={(event) => change("username", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
         </label>
         <label className="mt-3 block text-sm font-semibold text-slate-700">{t("temporaryPassword")}
-          <input required minLength={12} type="password" autoComplete="new-password" value={form.password} onChange={(event) => change("password", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
+          <input required minLength={8} type="password" autoComplete="new-password" value={form.password} onChange={(event) => change("password", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
         </label>
         <p className="mt-2 text-xs leading-5 text-slate-500">{t("newPasswordRequirements")}</p>
         <button disabled={saving} className="mt-5 h-11 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:opacity-60">{saving ? t("creating") : t("createAdministrator")}</button>
@@ -118,7 +119,7 @@ export function AdminManagement({ onAccountsChanged }: { onAccountsChanged?: () 
           </div>
           {resetTarget === admin.id && <form onSubmit={(event) => void reset(event, admin)} className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row">
             <label className="min-w-0 flex-1 text-sm font-semibold text-slate-700">{t("newTemporaryPassword")}
-              <input required minLength={12} type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
+              <input required minLength={8} type="password" autoComplete="new-password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
             </label>
             <button disabled={saving} className="h-11 self-end rounded-xl bg-ink px-4 text-sm font-bold text-white disabled:opacity-60">{t("setPassword")}</button>
           </form>}

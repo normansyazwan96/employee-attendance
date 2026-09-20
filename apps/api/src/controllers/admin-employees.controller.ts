@@ -6,7 +6,7 @@ import { hashPassword } from "../utils/password.js";
 import { recordAudit } from "../services/audit.js";
 import { getAdminContext } from "../services/admin-scope.js";
 
-const strongPassword = z.string().min(12).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
+const strongPassword = z.string().min(8).max(128).regex(/[a-z]/).regex(/[A-Z]/).regex(/\d/).regex(/[^A-Za-z0-9]/);
 const employeeSchema = z.object({
   username: z.string().trim().min(3).max(40).regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/).transform((value) => value.toLowerCase()),
   password: strongPassword,
@@ -30,7 +30,7 @@ function employeeView(user: { id: string; username: string; isActive: boolean; c
 function employeeValidationError(error: z.ZodError): string {
   const field = String(error.issues[0]?.path[0] ?? "");
   if (field === "username") return "Username must be 3 to 40 characters and use only letters, numbers, dots, hyphens, or underscores";
-  if (field === "password") return "Temporary password must be 12 to 128 characters and include uppercase, lowercase, number, and symbol characters";
+  if (field === "password") return "Temporary password must be 8 to 128 characters and include uppercase, lowercase, number, and symbol characters";
   if (field === "firstName") return "First name is required and must be 80 characters or fewer";
   if (field === "lastName") return "Last name is required and must be 80 characters or fewer";
   if (field === "ownerAdminId") return "Select an administrator for this employee";
