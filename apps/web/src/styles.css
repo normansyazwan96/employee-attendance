@@ -4,6 +4,80 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply bg-slate-50 font-sans text-ink antialiased; }
+  body { @apply font-sans text-ink antialiased; background: #edf2f1; }
   button, a, input { -webkit-tap-highlight-color: transparent; }
+}
+
+:root {
+  color-scheme: light;
+  --glass-line: rgba(255, 255, 255, 0.76);
+  --glass-edge: rgba(27, 63, 69, 0.1);
+  --glass-shadow: 0 12px 36px rgba(30, 61, 68, 0.08);
+}
+
+body {
+  background: linear-gradient(135deg, #e9f2ee 0%, #f4f6f5 48%, #e9eef1 100%);
+  background-attachment: fixed;
+}
+
+#root { min-height: 100vh; }
+
+.app-canvas {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.glass-panel,
+.shadow-card {
+  background: rgba(255, 255, 255, 0.73);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+  border-radius: 8px;
+}
+
+.glass-panel-strong {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 20px 60px rgba(30, 61, 68, 0.1);
+  -webkit-backdrop-filter: blur(24px) saturate(120%);
+  backdrop-filter: blur(24px) saturate(120%);
+  border-radius: 8px;
+}
+
+.glass-navigation {
+  background: rgba(250, 253, 252, 0.78);
+  border-color: rgba(27, 63, 69, 0.1);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  backdrop-filter: blur(20px) saturate(130%);
+}
+
+.glass-sidebar {
+  background: rgba(255, 255, 255, 0.68);
+  border-right: 1px solid rgba(27, 63, 69, 0.09);
+  -webkit-backdrop-filter: blur(20px) saturate(125%);
+  backdrop-filter: blur(20px) saturate(125%);
+}
+
+.glass-panel input:not([type="checkbox"]):not([type="radio"]),
+.glass-panel select,
+.glass-panel-strong input:not([type="checkbox"]):not([type="radio"]),
+.shadow-card input:not([type="checkbox"]):not([type="radio"]),
+.shadow-card select {
+  background-color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(56, 90, 93, 0.16);
+}
+
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid #0e7772;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel, .shadow-card, .glass-panel-strong, .glass-navigation, .glass-sidebar {
+    background: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

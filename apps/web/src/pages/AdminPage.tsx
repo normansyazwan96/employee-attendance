@@ -65,7 +65,7 @@ export function AdminPage(): JSX.Element {
 
   return <DashboardShell title={t("adminDashboard")}>
     <p className="-mt-5 mb-6 text-sm text-slate-500">{t("liveAttendanceAndWorksites")}</p>
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{stats.map(([label, value, note, color]) => <article key={label} className="rounded-2xl bg-white p-4 shadow-card"><div className={`mb-5 grid h-9 w-9 place-items-center rounded-xl text-sm font-bold ${color}`}>{value}</div><p className="text-sm font-medium text-slate-500">{label}</p><p className="mt-1 text-xs text-slate-400">{note}</p></article>)}</section>
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">{stats.map(([label, value, note, color]) => <article key={label} className="min-w-0 bg-white p-3 shadow-card sm:p-4"><div className={`mb-3 grid h-8 w-8 place-items-center rounded-md text-sm font-bold ${color}`}>{value}</div><p className="text-sm font-medium text-slate-700">{label}</p><p className="mt-1 text-xs text-slate-500">{note}</p></article>)}</section>
 
     <section className="mt-10">
       <div className="mb-4"><h2 className="text-lg font-bold">{t("worksites")}</h2><p className="text-sm text-slate-500">{t("manageWorksites")}</p></div>

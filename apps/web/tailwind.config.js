@@ -3,9 +3,9 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      colors: { ink: "#17212B", brand: { 500: "#166A65", 600: "#0E5551", 50: "#EEF8F6" } },
+      colors: { ink: "#202d32", brand: { 500: "#167a70", 600: "#11675f", 50: "#e8f5f1" } },
       spacing: { 13: "3.25rem" },
-      boxShadow: { card: "0 12px 30px rgba(23, 33, 43, 0.08)" },
+      boxShadow: { card: "0 12px 36px rgba(30, 61, 68, 0.08)" },
     },
   },
   plugins: [],
