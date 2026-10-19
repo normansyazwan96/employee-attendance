@@ -8,6 +8,8 @@ test-results/
 generated/
 
 .vercel
+.wrangler/
+.wrangler-dist/
 .env*
 .agents/
 skills-lock.json

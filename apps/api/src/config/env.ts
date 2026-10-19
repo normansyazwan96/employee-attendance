@@ -3,10 +3,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(currentDirectory, "../../../../.env") });
+if (!process.env.DATABASE_URL) {
+  const currentDirectory = dirname(fileURLToPath(import.meta.url));
+  dotenv.config({ path: resolve(currentDirectory, "../../../../.env") });
+}
 
 const schema = z.object({
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   PORT: z.coerce.number().int().positive().default(3000),
   CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
   CLIENT_ORIGINS: z.string().default("http://localhost:5173,http://127.0.0.1:4173"),

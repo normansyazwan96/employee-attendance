@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "employee-attendance",
+  "account_id": "af6c946544dc6f08552b6114be18a13f",
+  "main": "./cloudflare/worker.ts",
+  "compatibility_date": "2026-10-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "upload_source_maps": true,
+  "assets": {
+    "directory": "./apps/web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "CLIENT_ORIGIN": "https://employee-attendance-api-ruby.vercel.app",
+    "CLIENT_ORIGINS": "https://employee-attendance-api-ruby.vercel.app",
+    "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
+    "WEBHOOK_URL": ""
+  }
+}

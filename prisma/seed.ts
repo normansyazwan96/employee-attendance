@@ -1,8 +1,15 @@
+import "dotenv/config";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Role } from "@prisma/client";
 import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { promisify } from "node:util";
 
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required");
+}
+
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 const scrypt = promisify(scryptCallback);
 
 async function hashPassword(password: string): Promise<string> {

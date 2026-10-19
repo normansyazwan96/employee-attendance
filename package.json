@@ -16,6 +16,10 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace=@attendance/web",
+    "build:cloudflare": "npm run db:generate && npm run build --workspace=@attendance/web",
+    "dev:cloudflare": "npm run build:cloudflare && wrangler dev",
+    "deploy:cloudflare": "npm run build:cloudflare && wrangler deploy",
+    "cloudflare:typegen": "wrangler types cloudflare-env.d.ts",
     "db:generate": "prisma generate --schema prisma/schema.prisma",
     "db:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
@@ -24,14 +28,22 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.54.0",
-    "prisma": "6.12.0"
+    "@types/pg": "^8.23.1",
+    "prisma": "^6.19.3",
+    "wrangler": "4.86.0"
   },
   "dependencies": {
-    "@prisma/client": "6.12.0"
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "pg": "^8.23.1",
+    "proxy-addr": "2.0.8"
   },
   "overrides": {
     "js-yaml": "4.3.2",
+    "proxy-addr": "2.0.8",
     "qs": "6.16.0"
   },
-  "prisma": { "seed": "tsx prisma/seed.ts" }
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
 }
