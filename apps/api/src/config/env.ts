@@ -9,6 +9,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 const schema = z.object({
+  APP_ENV: z.enum(["development", "staging", "production", "test"]).default("development"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   PORT: z.coerce.number().int().positive().default(3000),
   CLIENT_ORIGIN: z.string().url().default("http://localhost:5173"),
@@ -17,6 +18,14 @@ const schema = z.object({
   ATTENDANCE_TIMEZONE: z.string().default("UTC"),
   WEBHOOK_URL: z.string().url().or(z.literal("")).default(""),
   WEBHOOK_SECRET: z.string().default(""),
+  MFA_ENCRYPTION_KEY: z.string().default(""),
+  RESEND_API_KEY: z.string().default(""),
+  EMAIL_FROM: z.string().default(""),
+  APP_BASE_URL: z.string().url().default("http://localhost:5173"),
+  SENTRY_DSN: z.string().url().or(z.literal("")).default(""),
+  FEATURE_ATTENDANCE_V2: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  FEATURE_WORKFORCE_V2: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  FEATURE_PAYROLL: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
 export const env = schema.parse(process.env);

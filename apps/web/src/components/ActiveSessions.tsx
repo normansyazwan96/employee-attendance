@@ -1,0 +1,11 @@
+import { useCallback, useEffect, useState } from "react";
+import { getActiveSessions, revokeActiveSession, type ActiveSession } from "../lib/sessions";
+import { useLanguage } from "../lib/language-context";
+
+export function ActiveSessions(): JSX.Element {
+  const { language, locale } = useLanguage(); const ms = language === "ms"; const [sessions, setSessions] = useState<ActiveSession[]>([]); const [error, setError] = useState(""); const [busy, setBusy] = useState("");
+  const load = useCallback(async () => { try { setSessions(await getActiveSessions()); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load sessions"); } }, []);
+  useEffect(() => { void load(); }, [load]);
+  async function revoke(id: string): Promise<void> { setBusy(id); try { await revokeActiveSession(id); await load(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to revoke session"); } finally { setBusy(""); } }
+  return <section className="mt-6 rounded-lg border border-white/80 bg-white/75 p-5 shadow-card"><h2 className="text-base font-semibold">{ms ? "Sesi aktif" : "Active sessions"}</h2><p className="mt-1 text-sm text-slate-600">{ms ? "Semak peranti yang sedang mempunyai akses ke akaun anda." : "Review devices that currently have access to your account."}</p>{error && <p role="alert" className="mt-3 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}<div className="mt-4 space-y-3">{sessions.map((session) => <div key={session.id} className="flex flex-wrap items-start justify-between gap-3 border-t border-slate-200 pt-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{session.userAgent || (ms ? "Peranti tidak diketahui" : "Unknown device")}{session.current ? ` · ${ms ? "Semasa" : "Current"}` : ""}</p><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(session.lastUsedAt))}{session.ipAddress ? ` · ${session.ipAddress}` : ""}</p></div>{!session.current && <button disabled={busy === session.id} onClick={() => void revoke(session.id)} className="rounded-md border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700">{ms ? "Tarik balik" : "Revoke"}</button>}</div>)}</div></section>;
+}

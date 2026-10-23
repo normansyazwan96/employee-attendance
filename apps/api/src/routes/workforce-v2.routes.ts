@@ -1,0 +1,27 @@
+import { Role } from "@prisma/client";
+import { Router } from "express";
+import { assignManagerReportsV2, createDepartmentV2, createHolidayV2, createManagerV2, createScheduleAssignmentV2, createShiftTemplateV2, getAttendanceEventLocationV2, getMalaysiaHolidayCalendarV2, getWorkPolicyV2, importMalaysiaHolidayCalendarV2, listDepartmentsV2, listHolidaysV2, listManagersV2, listScheduleAssignmentsV2, listShiftTemplatesV2, listWorkforceEmployeesV2, listWorkforceTimesheetsV2, updateManagerStatusV2, updateWorkPolicyV2, updateWorkforceEmployeeV2 } from "../controllers/workforce-v2.controller.js";
+import { requireAuth, requireCurrentSession, requirePasswordChangeCompleted, requireRoles } from "../middleware/auth.js";
+
+export const workforceV2Router = Router();
+workforceV2Router.use("/workforce", requireAuth, requireCurrentSession, requirePasswordChangeCompleted, requireRoles(Role.ADMIN, Role.DEV_ADMIN));
+workforceV2Router.get("/workforce/departments", listDepartmentsV2);
+workforceV2Router.post("/workforce/departments", createDepartmentV2);
+workforceV2Router.get("/workforce/employees", listWorkforceEmployeesV2);
+workforceV2Router.get("/workforce/timesheets", listWorkforceTimesheetsV2);
+workforceV2Router.patch("/workforce/employees/:id", updateWorkforceEmployeeV2);
+workforceV2Router.get("/workforce/shift-templates", listShiftTemplatesV2);
+workforceV2Router.post("/workforce/shift-templates", createShiftTemplateV2);
+workforceV2Router.get("/workforce/schedule-assignments", listScheduleAssignmentsV2);
+workforceV2Router.post("/workforce/schedule-assignments", createScheduleAssignmentV2);
+workforceV2Router.get("/workforce/policy", getWorkPolicyV2);
+workforceV2Router.put("/workforce/policy", updateWorkPolicyV2);
+workforceV2Router.get("/workforce/holidays", listHolidaysV2);
+workforceV2Router.post("/workforce/holidays", createHolidayV2);
+workforceV2Router.get("/workforce/holiday-calendar", getMalaysiaHolidayCalendarV2);
+workforceV2Router.post("/workforce/holiday-calendar/import", importMalaysiaHolidayCalendarV2);
+workforceV2Router.get("/workforce/managers", listManagersV2);
+workforceV2Router.post("/workforce/managers", createManagerV2);
+workforceV2Router.put("/workforce/managers/:userId/reports", assignManagerReportsV2);
+workforceV2Router.patch("/workforce/managers/:userId/status", updateManagerStatusV2);
+workforceV2Router.get("/workforce/attendance-events/:id/location", getAttendanceEventLocationV2);

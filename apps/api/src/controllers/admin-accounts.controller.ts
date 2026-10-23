@@ -1,4 +1,4 @@
-import { Prisma, Role } from "@prisma/client";
+import { MembershipRole, MembershipStatus, Prisma, Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { getAdminContext, type AdminAuth } from "../services/admin-scope.js";
@@ -23,7 +23,8 @@ const accountInclude = { client: { select: { name: true } } } as const;
 export async function getAdminAccounts(_request: Request, response: Response): Promise<void> {
   const auth = response.locals.auth as AdminAuth;
   if (auth.role !== Role.DEV_ADMIN) { response.status(403).json({ error: "Only a dev admin can manage admin accounts" }); return; }
-  const users = await prisma.user.findMany({ where: { role: Role.ADMIN }, include: accountInclude, orderBy: [{ isActive: "desc" }, { username: "asc" }] });
+  const context = await getAdminContext(response);
+  const users = await prisma.user.findMany({ where: { role: Role.ADMIN, ...(context?.clientId ? { clientId: context.clientId } : {}) }, include: accountInclude, orderBy: [{ isActive: "desc" }, { username: "asc" }] });
   response.json({ admins: users.map(accountView) });
 }
 
@@ -32,12 +33,13 @@ export async function createAdminAccount(request: Request, response: Response): 
   if (auth.role !== Role.DEV_ADMIN) { response.status(403).json({ error: "Only a dev admin can create admin accounts" }); return; }
   const parsed = adminSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter a valid name, username, and strong temporary password" }); return; }
-  const client = await prisma.client.findUnique({ where: { id: "acme-local" }, select: { id: true } })
+  const context = await getAdminContext(response);
+  const client = context?.clientId ? { id: context.clientId } : await prisma.client.findUnique({ where: { id: "acme-local" }, select: { id: true } })
     ?? await prisma.client.findFirst({ select: { id: true }, orderBy: { createdAt: "asc" } });
   if (!client) { response.status(409).json({ error: "Create a client before adding an administrator" }); return; }
   const clientId = client.id;
   try {
-    const user = await prisma.user.create({ data: { username: parsed.data.username, displayName: parsed.data.displayName, clientId, role: Role.ADMIN, passwordHash: await hashPassword(parsed.data.password), mustChangePassword: true, createdByUserId: auth.sub }, include: accountInclude });
+    const user = await prisma.user.create({ data: { username: parsed.data.username, displayName: parsed.data.displayName, clientId, role: Role.ADMIN, passwordHash: await hashPassword(parsed.data.password), mustChangePassword: true, createdByUserId: auth.sub, memberships: { create: { clientId, role: MembershipRole.ADMIN } } }, include: accountInclude });
     await recordAudit({ actorUserId: auth.sub, clientId: user.clientId ?? undefined, action: "CREATE", entityType: "Admin", entityId: user.id, details: { username: user.username, clientId: user.clientId } });
     response.status(201).json({ admin: accountView(user) });
   } catch (error: unknown) {
@@ -59,7 +61,11 @@ export async function resetManagedAccountPassword(request: Request, response: Re
     include: accountInclude,
   });
   if (!target) { response.status(404).json({ error: "Managed account not found" }); return; }
-  const user = await prisma.user.update({ where: { id: target.id }, data: { passwordHash: await hashPassword(parsed.data.password), passwordVersion: { increment: 1 }, mustChangePassword: true }, include: accountInclude });
+  const user = await prisma.$transaction(async (transaction) => {
+    const updated = await transaction.user.update({ where: { id: target.id }, data: { passwordHash: await hashPassword(parsed.data.password), passwordVersion: { increment: 1 }, mustChangePassword: true }, include: accountInclude });
+    await transaction.authSession.updateMany({ where: { userId: target.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return updated;
+  });
   await recordAudit({ actorUserId: context.auth.sub, clientId: user.clientId ?? undefined, action: "RESET_PASSWORD", entityType: user.role === Role.ADMIN ? "Admin" : "Employee", entityId: user.id, details: { username: user.username } });
   response.json({ account: accountView(user) });
 }
@@ -72,7 +78,12 @@ export async function updateAdminAccountStatus(request: Request, response: Respo
   const id = String(request.params.id);
   const target = await prisma.user.findFirst({ where: { id, role: Role.ADMIN }, include: accountInclude });
   if (!target) { response.status(404).json({ error: "Administrator not found" }); return; }
-  const user = await prisma.user.update({ where: { id }, data: { isActive: parsed.data.isActive }, include: accountInclude });
+  const user = await prisma.$transaction(async (transaction) => {
+    const updated = await transaction.user.update({ where: { id }, data: { isActive: parsed.data.isActive }, include: accountInclude });
+    await transaction.organizationMembership.updateMany({ where: { userId: id }, data: { status: parsed.data.isActive ? MembershipStatus.ACTIVE : MembershipStatus.INACTIVE } });
+    if (!parsed.data.isActive) await transaction.authSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return updated;
+  });
   await recordAudit({ actorUserId: auth.sub, clientId: user.clientId ?? undefined, action: parsed.data.isActive ? "ACTIVATE" : "DEACTIVATE", entityType: "Admin", entityId: user.id, details: { username: user.username, isActive: parsed.data.isActive } });
   response.json({ admin: accountView(user) });
 }

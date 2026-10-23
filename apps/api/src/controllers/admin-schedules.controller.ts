@@ -21,7 +21,7 @@ const include = { employee: { include: { user: { select: { username: true, clien
 export async function getAdminSchedules(_request: Request, response: Response): Promise<void> {
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
-  const schedules = await prisma.employeeSchedule.findMany({ where: context.auth.role === Role.DEV_ADMIN ? undefined : { employee: { user: context.employeeUserWhere } }, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
+  const schedules = await prisma.employeeSchedule.findMany({ where: context.auth.role === Role.DEV_ADMIN && !context.clientId ? undefined : { employee: { user: context.employeeUserWhere } }, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
   response.json({ schedules: schedules.map(view) });
 }
 

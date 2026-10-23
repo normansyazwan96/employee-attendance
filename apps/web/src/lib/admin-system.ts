@@ -1,5 +1,4 @@
-import { clearSession, getSession } from "./auth";
-import { apiUrl } from "./api";
+import { authenticatedFetch } from "./auth";
 
 export type WebhookDetails = {
   enabled: boolean;
@@ -11,14 +10,14 @@ export type WebhookDetails = {
   signatureHeader: string;
   signatureAlgorithm: string;
   failureBehavior: string;
+  delivery: { mode: string; maxRetries: number; retryDelaySeconds: number; deadLetterQueue: boolean };
 };
+export type WebhookDelivery = { id: string; eventType: string; status: string; attempts: number; responseStatus: number | null; lastError: string | null; createdAt: string; deliveredAt: string | null };
 
 export async function getWebhookDetails(): Promise<WebhookDetails> {
-  const session = getSession();
-  if (!session) throw new Error("Please sign in again");
-  const response = await fetch(`${apiUrl}/api/v1/admin/system/webhook`, { headers: { Authorization: `Bearer ${session.token}` } });
-  if (response.status === 401) { clearSession(); throw new Error("Your session has expired. Please sign in again."); }
+  const response = await authenticatedFetch("/api/v1/admin/system/webhook");
   const body = await response.json() as { webhook?: WebhookDetails; error?: string };
   if (!response.ok || !body.webhook) throw new Error(body.error ?? "Unable to load webhook details");
   return body.webhook;
 }
+export async function getWebhookDeliveries(): Promise<WebhookDelivery[]> { const response = await authenticatedFetch("/api/v1/admin/system/webhook/deliveries"); const body = await response.json() as { data?: WebhookDelivery[]; error?: string }; if (!response.ok) throw new Error(body.error ?? "Unable to load webhook deliveries"); return body.data ?? []; }

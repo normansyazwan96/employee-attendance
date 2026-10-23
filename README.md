@@ -1,6 +1,6 @@
 # Employee Attendance
 
-A local-first, mobile-first attendance system with role-based authentication, employee clock-in/clock-out actions, GPS geofencing, attendance history, schedules, admin attendance views, worksite management, and audit logs backed by PostgreSQL/Prisma. Payroll and advanced reporting are intentionally deferred.
+A mobile-first, multi-company attendance system for Malaysian SMEs. It includes GPS clocking and breaks, effective-dated schedules, timesheets and exceptions, leave and correction approvals, manager scopes, secure sessions and administrator 2FA, immutable audit history, queued webhooks, and English/Bahasa Malaysia interfaces. Payroll-ready CSV/XLSX export support is implemented but remains disabled until private R2 storage is enabled.
 
 ## Architecture
 
@@ -11,21 +11,24 @@ employee-attendance/
 │   └── api/        Express REST API
 ├── packages/
 │   └── shared/     Shared Zod contracts and TypeScript types
-├── prisma/         Prisma configuration
-└── docker-compose.yml
+├── cloudflare/     Cloudflare Worker entry point
+├── docs/           Architecture and operations runbooks
+├── prisma/         Schema and additive migrations
+└── scripts/        Release and load-test utilities
 ```
 
 ## Technology stack
 
 - React, TypeScript, Vite, Tailwind CSS, React Router
 - Node.js, Express, Zod
-- PostgreSQL in Docker Compose, Prisma ORM
+- Neon PostgreSQL, Prisma ORM, Cloudflare Hyperdrive
+- Cloudflare Workers, Queues, R2, scheduled jobs, and rate limiting
 - Vitest, Playwright, ESLint
 
 ## Prerequisites
 
 - Node.js 20 or newer (includes npm)
-- Docker Desktop with Docker Compose
+- A PostgreSQL database, either local or a Neon development branch
 
 ## Installation
 
@@ -47,9 +50,9 @@ npm run db:generate
 npm run db:migrate -- --name init-auth
 ```
 
-To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 8 characters and include uppercase, lowercase, number, and symbol characters.
+To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 8 characters and include uppercase, lowercase, number, and symbol characters. Seeded accounts require a password change by default; only isolated automation may set `SEED_MUST_CHANGE_PASSWORD=false`.
 
-The Prisma schema contains Client, User, Employee, EmployeeSchedule, AttendanceRecord, Worksite, and AuditLog models. Users sign in with a unique username and support soft deactivation through `isActive`, so attendance history is retained when access is disabled. Every role can manage its own profile and password. Admin mutations are recorded in audit logs. An ADMIN can create employees and manage only the employees it created, including their status, temporary-password resets, schedules, attendance, and exports. DEV_ADMIN has the full admin surface across all clients and can create, deactivate, reactivate, and reset client administrator accounts. Every administrator-issued temporary password must be changed at the next login. `db:generate` creates Prisma client artifacts, `db:migrate` creates the local database tables, and `db:seed` creates local development accounts and a sample worksite. Open Prisma Studio with `npm run db:studio`.
+The schema preserves the legacy `/api/v1` records while `/api/v2` adds organization memberships, rotating sessions, attendance events, timesheet aggregates, workforce policies, leave, corrections, notifications, pay periods, immutable adjustments, and export jobs. Migrations follow expand-contract rules and must be rehearsed on a Neon branch before production.
 
 ## Local development accounts
 
@@ -63,13 +66,13 @@ Change `JWT_SECRET` in `.env` to a unique random value of at least 32 characters
 
 ## Attendance foundation
 
-Employees can clock in and clock out once per day from the Employee dashboard, then review their 30 most recent records in History. Admins can view filtered and paginated attendance for employees in their client and export the filtered results as CSV without GPS fields. The browser requests high-accuracy location permission; the API validates it against the active worksite geofence before accepting either action and records the accepted coordinates and accuracy. Attendance responses include derived schedule statuses such as on time, late, not scheduled, no schedule, and missed clock-out. The authenticated API includes `GET /api/v1/attendance/today`, `GET /api/v1/attendance/history`, `POST /api/v1/attendance/location-status`, `POST /api/v1/attendance/clock-in`, `POST /api/v1/attendance/clock-out`, `GET /api/v1/admin/attendance` with optional `from`, `to`, `page`, and `pageSize` filters, and `GET /api/v1/admin/attendance/export` with optional date filters.
+Employees clock in, clock out, start breaks, and end breaks using online mobile-browser GPS. Every action requires an idempotency key, uses server time, captures the accepted worksite snapshot, and is protected against concurrent submissions. Network failures keep the pending action key for a safe retry; offline or backdated punches are never accepted. Exact GPS is purged according to the organization policy, which defaults to 90 days.
 
 The seeded Acme Local HQ worksite is at `2.9084686453776176, 101.60997566744295` with a 150 m radius. Admins can create, edit, activate, deactivate, and delete worksites from the admin dashboard, create or deactivate employees without deleting their records, and assign schedules from the same dashboard. Attendance dates use `ATTENDANCE_TIMEZONE` from `.env` and default to `UTC`.
 
-The API validates access-token claims, enforces role and client boundaries, applies Helmet security headers, limits JSON request bodies to 100 KB, and limits repeated login attempts from one IP to 10 requests per 15-minute window. Employees and administrators can explicitly log out, and expired sessions are cleared on the next authenticated API response. The current limiter is process-local; use a shared store such as Redis before running multiple API instances.
+The API uses 15-minute access tokens in memory and rotating refresh tokens in Secure, HttpOnly, SameSite cookies. It supports revocation, active sessions, password recovery, administrator and manager TOTP 2FA, account lockout, and Cloudflare rate limiting. Tenant access is resolved through active memberships and shared authorization helpers.
 
-Attendance webhooks are available for `attendance.clock_in` and `attendance.clock_out`. Set both `WEBHOOK_URL` and `WEBHOOK_SECRET` to enable signed `POST` delivery; requests use the `x-webhook-signature` HMAC-SHA256 header. DEV_ADMIN can inspect the runtime status and non-secret configuration from the admin dashboard. Webhook failures are logged but do not roll back attendance records.
+Attendance webhooks cover clock and break events. Cloudflare Queues provide retries, durable delivery history, and dead-letter handling. Webhook failures never roll back an accepted attendance event.
 
 ## Development
 
@@ -78,7 +81,7 @@ npm run dev:web     # http://localhost:5173
 npm run dev:api     # http://localhost:3000
 ```
 
-Available web routes are `/login`, `/employee`, `/employee/history`, `/admin`, and `/profile`. DEV_ADMIN uses the full `/admin` surface; `/dev` redirects there for compatibility. Sign-in calls `POST http://localhost:3000/api/v1/auth/login`; dashboard routes require a signed-in account with the matching role. Profile data uses `GET /api/v1/profile` and `PATCH /api/v1/profile`. The API health endpoint is `GET http://localhost:3000/api/v1/health`, and authorized administrators can read scoped audit history from `GET /api/v1/admin/audit`.
+The employee experience uses `/employee`, `/employee/history`, and `/employee/work`. Administrator routes are split under `/admin/*`; managers use `/manager`. `/dev` redirects to the administrator workspace for compatibility. Liveness and readiness checks are available at `/api/v2/health/live` and `/api/v2/health/ready`.
 
 ## Quality checks
 
@@ -91,4 +94,6 @@ npm run build
 npm run test:e2e
 ```
 
-The Playwright configuration uses an iPhone 13 viewport. Manually inspect the employee page at 320px, 375px, 390px, and 430px widths before UI releases.
+Playwright checks 320px, 375px, 390px, and 430px widths in both languages. A staging-only 100-user clock test is available through `npm run load:clock-actions`; see [the release checklist](docs/operations/release-checklist.md).
+
+Operational details are in [the architecture guide](docs/architecture.md), [API v2 guide](docs/api-v2.md), [deployment runbook](docs/operations/deployment.md), [release checklist](docs/operations/release-checklist.md), and [database recovery runbook](docs/operations/database-recovery.md).

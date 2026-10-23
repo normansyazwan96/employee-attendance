@@ -1,0 +1,54 @@
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      DATABASE_URL: ${{ secrets.NEON_STAGING_DIRECT_DATABASE_URL }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply staging migrations
+        run: npm run db:deploy
+
+      - name: Verify staging tenant isolation
+        run: npm run test:integration --workspace=@attendance/api
+
+      - name: Deploy staging Worker
+        run: npm run deploy:staging
+
+      - name: Verify staging liveness
+        run: curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 https://employee-attendance-staging.floweaversolutions.workers.dev/api/v2/health/live
+
+      - name: Verify staging readiness
+        run: curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 3 https://employee-attendance-staging.floweaversolutions.workers.dev/api/v2/health/ready

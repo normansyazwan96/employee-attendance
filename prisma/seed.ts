@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, Role } from "@prisma/client";
+import { MembershipRole, PlatformRole, PrismaClient, Role } from "@prisma/client";
 import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { promisify } from "node:util";
 
@@ -27,6 +27,7 @@ function seedPassword(name: string): string {
 }
 
 async function main(): Promise<void> {
+  const mustChangePassword = process.env.SEED_MUST_CHANGE_PASSWORD !== "false";
   const client = await prisma.client.upsert({ where: { id: "acme-local" }, update: { name: "Acme Local" }, create: { id: "acme-local", name: "Acme Local" } });
   await prisma.worksite.upsert({ where: { clientId_name: { clientId: client.id, name: "Acme Local HQ" } }, update: { latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150, isActive: true }, create: { clientId: client.id, name: "Acme Local HQ", latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150 } });
   const accounts = [
@@ -38,12 +39,22 @@ async function main(): Promise<void> {
     const passwordHash = await hashPassword(password);
     await prisma.user.upsert({
       where: { username: account.username },
-      update: { role: account.role, clientId: account.clientId, passwordHash, passwordVersion: { increment: 1 }, mustChangePassword: true },
-      create: { ...account, passwordHash, mustChangePassword: true },
+      update: { role: account.role, platformRole: account.role === Role.DEV_ADMIN ? PlatformRole.DEV_ADMIN : PlatformRole.USER, clientId: account.clientId, passwordHash, passwordVersion: { increment: 1 }, mustChangePassword },
+      create: { ...account, platformRole: account.role === Role.DEV_ADMIN ? PlatformRole.DEV_ADMIN : PlatformRole.USER, passwordHash, mustChangePassword },
     });
   }
   const seededAdmin = await prisma.user.findUniqueOrThrow({ where: { username: "admin" } });
   const john = await prisma.user.findUniqueOrThrow({ where: { username: "john.smith" } });
+  await prisma.organizationMembership.upsert({
+    where: { userId_clientId: { userId: seededAdmin.id, clientId: client.id } },
+    update: { role: MembershipRole.ADMIN, status: "ACTIVE" },
+    create: { userId: seededAdmin.id, clientId: client.id, role: MembershipRole.ADMIN },
+  });
+  await prisma.organizationMembership.upsert({
+    where: { userId_clientId: { userId: john.id, clientId: client.id } },
+    update: { role: MembershipRole.EMPLOYEE, status: "ACTIVE" },
+    create: { userId: john.id, clientId: client.id, role: MembershipRole.EMPLOYEE },
+  });
   await prisma.user.update({ where: { id: john.id }, data: { createdByUserId: seededAdmin.id } });
   const johnEmployee = await prisma.employee.upsert({ where: { userId: john.id }, update: { firstName: "John", lastName: "Smith" }, create: { userId: john.id, firstName: "John", lastName: "Smith" } });
 
@@ -71,7 +82,7 @@ async function main(): Promise<void> {
     });
   }
 
-  console.info("Seeded users with passwords supplied through environment variables. Each user must change their password after signing in.");
+  console.info(`Seeded users with passwords supplied through environment variables. Password change required: ${mustChangePassword}.`);
 }
 
 main().catch((error: unknown) => { console.error(error); process.exitCode = 1; }).finally(async () => prisma.$disconnect());

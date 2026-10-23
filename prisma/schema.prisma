@@ -11,7 +11,24 @@ datasource db {
 enum Role {
   EMPLOYEE
   ADMIN
+  MANAGER
   DEV_ADMIN
+}
+
+enum PlatformRole {
+  USER
+  DEV_ADMIN
+}
+
+enum MembershipRole {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
 }
 
 enum AttendanceStatus {
@@ -19,93 +36,626 @@ enum AttendanceStatus {
   CLOCKED_OUT
 }
 
+enum AttendanceEventType {
+  CLOCK_IN
+  CLOCK_OUT
+  BREAK_START
+  BREAK_END
+}
+
+enum AttendanceEventSource {
+  MOBILE_GPS
+  ADMIN_ADJUSTMENT
+  MIGRATION
+}
+
+enum TimesheetState {
+  OPEN
+  COMPLETE
+  EXCEPTION
+  APPROVED
+  LOCKED
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  RETRYING
+  DELIVERED
+  DEAD_LETTER
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum PayPeriodStatus {
+  DRAFT
+  REVIEWED
+  APPROVED
+  LOCKED
+  EXPORTED
+}
+
+enum ExportJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum ExportFormat {
+  CSV
+  XLSX
+}
+
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
-  worksites Worksite[]
+  id                String                   @id @default(cuid())
+  name              String
+  stateCode         String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  users             User[]
+  memberships       OrganizationMembership[]
+  worksites         Worksite[]
+  attendanceEvents  AttendanceEvent[]
+  timesheetDays     TimesheetDay[]
+  webhookDeliveries WebhookDelivery[]
+  departments       Department[]
+  workPolicy        WorkPolicy?
+  shiftTemplates    ShiftTemplate[]
+  holidays          Holiday[]
+  leaveTypes        LeaveType[]
+  leaveRequests     LeaveRequest[]
+  payPeriods        PayPeriod[]
+  exportJobs        ExportJob[]
+  notifications     Notification[]
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  username           String    @unique
-  passwordHash       String
-  passwordVersion    Int       @default(0)
-  mustChangePassword Boolean   @default(false)
-  role               Role      @default(EMPLOYEE)
-  isActive           Boolean   @default(true)
-  displayName        String?
-  clientId           String?
-  createdByUserId    String?
-  client             Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  createdBy          User?     @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdUsers       User[]    @relation("UserCreator")
-  employee           Employee?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                      String                   @id @default(cuid())
+  username                String                   @unique
+  email                   String?                  @unique
+  passwordHash            String
+  passwordVersion         Int                      @default(0)
+  mustChangePassword      Boolean                  @default(false)
+  role                    Role                     @default(EMPLOYEE)
+  platformRole            PlatformRole             @default(USER)
+  isActive                Boolean                  @default(true)
+  failedLoginAttempts     Int                      @default(0)
+  lockedUntil             DateTime?
+  lastLoginAt             DateTime?
+  displayName             String?
+  clientId                String?
+  createdByUserId         String?
+  client                  Client?                  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdBy               User?                    @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers            User[]                   @relation("UserCreator")
+  employee                Employee?
+  memberships             OrganizationMembership[]
+  authSessions            AuthSession[]
+  passwordResetTokens     PasswordResetToken[]
+  mfaCredential           MfaCredential?
+  createdAttendanceEvents AttendanceEvent[]        @relation("AttendanceEventCreator")
+  notifications           Notification[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
 
   @@index([createdByUserId])
 }
 
-model Employee {
-  id        String   @id @default(cuid())
-  firstName String
-  lastName  String
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attendance AttendanceRecord[]
-  schedule   EmployeeSchedule?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model OrganizationMembership {
+  id                  String                   @id @default(cuid())
+  userId              String
+  clientId            String
+  role                MembershipRole
+  status              MembershipStatus         @default(ACTIVE)
+  managerMembershipId String?
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client              Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  manager             OrganizationMembership?  @relation("MembershipManager", fields: [managerMembershipId], references: [id], onDelete: SetNull)
+  reports             OrganizationMembership[] @relation("MembershipManager")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  @@unique([userId, clientId])
+  @@index([clientId, role, status])
+  @@index([managerMembershipId])
 }
 
-model EmployeeSchedule {
-  id                  String   @id @default(cuid())
-  employeeId          String   @unique
-  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+model AuthSession {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String    @unique
+  familyId         String
+  expiresAt        DateTime
+  lastUsedAt       DateTime  @default(now())
+  revokedAt        DateTime?
+  rotatedFromId    String?
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId, revokedAt, expiresAt])
+  @@index([familyId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model MfaCredential {
+  id              String            @id @default(cuid())
+  userId          String            @unique
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedSecret String
+  enabled         Boolean           @default(false)
+  verifiedAt      DateTime?
+  recoveryCodes   MfaRecoveryCode[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model MfaRecoveryCode {
+  id              String        @id @default(cuid())
+  mfaCredentialId String
+  mfaCredential   MfaCredential @relation(fields: [mfaCredentialId], references: [id], onDelete: Cascade)
+  codeHash        String        @unique
+  usedAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([mfaCredentialId, usedAt])
+}
+
+model Employee {
+  id                  String                 @id @default(cuid())
+  firstName           String
+  lastName            String
+  userId              String                 @unique
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendance          AttendanceRecord[]
+  attendanceEvents    AttendanceEvent[]
+  timesheetDays       TimesheetDay[]
+  schedule            EmployeeSchedule?
+  employeeNumber      String?
+  employmentStatus    EmploymentStatus       @default(ACTIVE)
+  joinDate            DateTime?
+  terminationDate     DateTime?
+  departmentId        String?
+  department          Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  managerEmployeeId   String?
+  manager             Employee?              @relation("EmployeeManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  directReports       Employee[]             @relation("EmployeeManager")
+  scheduleAssignments ScheduleAssignment[]
+  correctionRequests  AttendanceCorrection[]
+  leaveBalances       LeaveBalance[]
+  leaveRequests       LeaveRequest[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([departmentId])
+  @@index([managerEmployeeId])
+  @@index([employmentStatus])
+}
+
+model Department {
+  id        String     @id @default(cuid())
+  clientId  String
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  code      String?
+  isActive  Boolean    @default(true)
+  employees Employee[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([clientId, name])
+  @@unique([clientId, code])
+}
+
+model WorkPolicy {
+  id                    String   @id @default(cuid())
+  clientId              String   @unique
+  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  gracePeriodMinutes    Int      @default(10)
+  defaultBreakMinutes   Int      @default(60)
+  roundingIncrement     Int      @default(1)
+  overtimeThreshold     Int      @default(480)
+  maximumShiftMinutes   Int      @default(960)
+  missedClockOutMinutes Int      @default(960)
+  maximumGpsAccuracy    Int      @default(100)
+  exactGpsRetentionDays Int      @default(90)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model ShiftTemplate {
+  id                  String               @id @default(cuid())
+  clientId            String
+  client              Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name                String
   workDays            Int[]
   startTime           String
   endTime             String
-  gracePeriodMinutes  Int      @default(10)
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  breakMinutes        Int                  @default(60)
+  gracePeriodMinutes  Int                  @default(10)
+  isOvernight         Boolean              @default(false)
+  isActive            Boolean              @default(true)
+  scheduleAssignments ScheduleAssignment[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([clientId, name])
+  @@index([clientId, isActive])
+}
+
+model ScheduleAssignment {
+  id              String        @id @default(cuid())
+  employeeId      String
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  shiftTemplateId String
+  shiftTemplate   ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Restrict)
+  effectiveFrom   String
+  effectiveTo     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([shiftTemplateId, effectiveFrom, effectiveTo])
+}
+
+model Holiday {
+  id                   String   @id @default(cuid())
+  clientId             String
+  client               Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date                 String
+  name                 String
+  stateCode            String?
+  isWorkingDayOverride Boolean  @default(false)
+  source               String   @default("ORGANIZATION")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([clientId, date, name])
+  @@index([clientId, date])
+}
+
+model EmployeeSchedule {
+  id                 String   @id @default(cuid())
+  employeeId         String   @unique
+  employee           Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workDays           Int[]
+  startTime          String
+  endTime            String
+  gracePeriodMinutes Int      @default(10)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model AttendanceRecord {
-  id         String           @id @default(cuid())
-  employeeId String
-  employee   Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  workDate   String
-  clockInAt  DateTime
-  clockOutAt DateTime?
-  clockInLatitude  Float?
-  clockInLongitude Float?
-  clockInAccuracy  Float?
+  id                String           @id @default(cuid())
+  employeeId        String
+  employee          Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workDate          String
+  clockInAt         DateTime
+  clockOutAt        DateTime?
+  clockInLatitude   Float?
+  clockInLongitude  Float?
+  clockInAccuracy   Float?
   clockOutLatitude  Float?
   clockOutLongitude Float?
   clockOutAccuracy  Float?
-  status     AttendanceStatus @default(CLOCKED_IN)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  status            AttendanceStatus @default(CLOCKED_IN)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@unique([employeeId, workDate])
   @@index([workDate])
 }
 
+model AttendanceEvent {
+  id                   String                @id @default(cuid())
+  employeeId           String
+  employee             Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clientId             String?
+  client               Client?               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workDate             String
+  type                 AttendanceEventType
+  source               AttendanceEventSource @default(MOBILE_GPS)
+  occurredAt           DateTime
+  worksiteId           String?
+  worksite             Worksite?             @relation(fields: [worksiteId], references: [id], onDelete: SetNull)
+  latitude             Float?
+  longitude            Float?
+  accuracyMeters       Float?
+  distanceMeters       Float?
+  acceptedRadiusMeters Int?
+  idempotencyKey       String
+  createdByUserId      String?
+  createdByUser        User?                 @relation("AttendanceEventCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  deviceDetails        Json?
+  createdAt            DateTime              @default(now())
+  webhookDelivery      WebhookDelivery?
+
+  @@unique([employeeId, idempotencyKey])
+  @@index([employeeId, workDate, occurredAt])
+  @@index([clientId, workDate, occurredAt])
+  @@index([worksiteId])
+  @@index([createdByUserId])
+}
+
+model WebhookDelivery {
+  id                String                @id @default(cuid())
+  clientId          String
+  client            Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  attendanceEventId String                @unique
+  attendanceEvent   AttendanceEvent       @relation(fields: [attendanceEventId], references: [id], onDelete: Cascade)
+  eventType         String
+  payload           Json
+  status            WebhookDeliveryStatus @default(PENDING)
+  attempts          Int                   @default(0)
+  lastAttemptAt     DateTime?
+  responseStatus    Int?
+  lastError         String?
+  deliveredAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([clientId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model TimesheetDay {
+  id                    String                 @id @default(cuid())
+  employeeId            String
+  employee              Employee               @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  clientId              String?
+  client                Client?                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  workDate              String
+  state                 TimesheetState         @default(OPEN)
+  firstClockInAt        DateTime?
+  lastClockOutAt        DateTime?
+  regularMinutes        Int                    @default(0)
+  overtimeMinutes       Int                    @default(0)
+  breakMinutes          Int                    @default(0)
+  lateMinutes           Int                    @default(0)
+  earlyDepartureMinutes Int                    @default(0)
+  leaveMinutes          Int                    @default(0)
+  paidLeaveMinutes      Int                    @default(0)
+  unpaidLeaveMinutes    Int                    @default(0)
+  isAbsent              Boolean                @default(false)
+  exceptionCodes        String[]               @default([])
+  version               Int                    @default(1)
+  approvedAt            DateTime?
+  lockedAt              DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  correctionRequests    AttendanceCorrection[]
+  payPeriodId           String?
+  payPeriod             PayPeriod?             @relation(fields: [payPeriodId], references: [id], onDelete: SetNull)
+  payrollAdjustments    PayrollAdjustment[]
+  leaveAllocations      LeaveAllocation[]
+
+  @@unique([employeeId, workDate])
+  @@index([clientId, workDate, state])
+  @@index([payPeriodId])
+}
+
+model AttendanceCorrection {
+  id                String             @id @default(cuid())
+  employeeId        String
+  employee          Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  timesheetDayId    String
+  timesheetDay      TimesheetDay       @relation(fields: [timesheetDayId], references: [id], onDelete: Cascade)
+  reason            String
+  note              String?
+  originalValues    Json
+  requestedValues   Json
+  status            RequestStatus      @default(PENDING)
+  reviewedByUserId  String?
+  reviewNote        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  payrollAdjustment PayrollAdjustment?
+
+  @@index([employeeId, status, createdAt])
+  @@index([timesheetDayId, status])
+}
+
+model PayPeriod {
+  id               String              @id @default(cuid())
+  clientId         String
+  client           Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name             String
+  startDate        String
+  endDate          String
+  status           PayPeriodStatus     @default(DRAFT)
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  lockedByUserId   String?
+  lockedAt         DateTime?
+  timesheetDays    TimesheetDay[]
+  adjustments      PayrollAdjustment[]
+  exportJobs       ExportJob[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([clientId, startDate, endDate])
+  @@index([clientId, status, startDate])
+}
+
+model PayrollAdjustment {
+  id              String                @id @default(cuid())
+  payPeriodId     String
+  payPeriod       PayPeriod             @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  timesheetDayId  String
+  timesheetDay    TimesheetDay          @relation(fields: [timesheetDayId], references: [id], onDelete: Restrict)
+  correctionId    String?               @unique
+  correction      AttendanceCorrection? @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  adjustmentType  String
+  minutes         Int                   @default(0)
+  reason          String
+  beforeValues    Json
+  afterValues     Json
+  createdByUserId String
+  createdAt       DateTime              @default(now())
+
+  @@index([payPeriodId, createdAt])
+  @@index([timesheetDayId])
+}
+
+model ExportJob {
+  id                String          @id @default(cuid())
+  clientId          String
+  client            Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  payPeriodId       String
+  payPeriod         PayPeriod       @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  format            ExportFormat
+  status            ExportJobStatus @default(PENDING)
+  template          Json?
+  r2Key             String?
+  fileName          String?
+  contentType       String?
+  fileSizeBytes     Int?
+  expiresAt         DateTime?
+  lastError         String?
+  requestedByUserId String
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([clientId, status, createdAt])
+  @@index([payPeriodId, createdAt])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+  @@index([clientId, createdAt])
+}
+
+model LeaveType {
+  id                        String         @id @default(cuid())
+  clientId                  String
+  client                    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code                      String
+  name                      String
+  isPaid                    Boolean        @default(true)
+  defaultEntitlementMinutes Int            @default(0)
+  isActive                  Boolean        @default(true)
+  balances                  LeaveBalance[]
+  requests                  LeaveRequest[]
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  @@unique([clientId, code])
+}
+
+model LeaveBalance {
+  id              String    @id @default(cuid())
+  employeeId      String
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId     String
+  leaveType       LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year            Int
+  entitledMinutes Int       @default(0)
+  usedMinutes     Int       @default(0)
+  pendingMinutes  Int       @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id               String            @id @default(cuid())
+  clientId         String
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employeeId       String
+  employee         Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveTypeId      String
+  leaveType        LeaveType         @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+  startDate        String
+  endDate          String
+  requestedMinutes Int
+  reason           String?
+  status           RequestStatus     @default(PENDING)
+  reviewedByUserId String?
+  reviewNote       String?
+  reviewedAt       DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  allocations      LeaveAllocation[]
+
+  @@index([clientId, status, startDate])
+  @@index([employeeId, status, startDate])
+}
+
+model LeaveAllocation {
+  id               String       @id @default(cuid())
+  leaveRequestId   String
+  leaveRequest     LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  timesheetDayId   String
+  timesheetDay     TimesheetDay @relation(fields: [timesheetDayId], references: [id], onDelete: Restrict)
+  workDate         String
+  scheduledMinutes Int
+  minutes          Int
+  paidMinutes      Int          @default(0)
+  unpaidMinutes    Int          @default(0)
+  createdAt        DateTime     @default(now())
+
+  @@unique([leaveRequestId, workDate])
+  @@index([timesheetDayId])
+  @@index([workDate])
+}
+
 model Worksite {
-  id           String   @id @default(cuid())
-  clientId     String
-  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name         String
-  latitude     Float
-  longitude    Float
-  radiusMeters Int      @default(150)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String            @id @default(cuid())
+  clientId         String
+  client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name             String
+  latitude         Float
+  longitude        Float
+  radiusMeters     Int               @default(150)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  attendanceEvents AttendanceEvent[]
 
   @@unique([clientId, name])
 }
@@ -118,6 +668,9 @@ model AuditLog {
   entityType  String
   entityId    String
   details     Json?
+  requestId   String?
+  ipAddress   String?
+  userAgent   String?
   createdAt   DateTime @default(now())
 
   @@index([entityType, entityId, createdAt])
