@@ -10,6 +10,14 @@ describe("access tokens", () => {
     expect(verifyAccessToken(token)?.sub).toBe("user-1");
   });
 
+  it("defaults access tokens to a fifteen-minute lifetime", () => {
+    const before = Math.floor(Date.now() / 1000);
+    const token = createAccessToken({ sub: "user-1", username: "employee", role: "EMPLOYEE" });
+    const payload = verifyAccessToken(token);
+    expect(payload?.exp).toBeGreaterThanOrEqual(before + 899);
+    expect(payload?.exp).toBeLessThanOrEqual(before + 901);
+  });
+
   it("rejects a token with malformed claims", () => {
     const header = encode({ alg: "HS256", typ: "JWT" });
     const body = encode({ sub: "user-1", username: "x", role: "EMPLOYEE", passwordVersion: 0, exp: Math.floor(Date.now() / 1000) + 60 });

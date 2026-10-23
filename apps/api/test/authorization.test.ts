@@ -17,6 +17,12 @@ describe("admin authorization boundaries", () => {
     expect(response.body.error).toBe("You do not have access to this resource");
   });
 
+  it("returns validation and authorization messages in Bahasa Malaysia when requested", async () => {
+    const response = await request(app).get("/api/v1/admin/worksites").set("Accept-Language", "ms-MY");
+    expect(response.status).toBe(401);
+    expect(response.body.error).toBe("Pengesahan diperlukan.");
+  });
+
   it("rejects malformed bearer tokens", async () => {
     const response = await request(app).get("/api/v1/admin/worksites").set("Authorization", "Bearer not-a-token");
     expect(response.status).toBe(401);

@@ -1,4 +1,4 @@
-import { Prisma, Role } from "@prisma/client";
+import { MembershipRole, MembershipStatus, Prisma, Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../services/prisma.js";
@@ -54,7 +54,7 @@ export async function createAdminEmployee(request: Request, response: Response):
   let createdByUserId = auth.sub;
   if (auth.role === Role.DEV_ADMIN) {
     if (!parsed.data.ownerAdminId) { response.status(400).json({ error: "Select an administrator for this employee" }); return; }
-    const ownerAdmin = await prisma.user.findFirst({ where: { id: parsed.data.ownerAdminId, role: Role.ADMIN, isActive: true }, select: { id: true, clientId: true } });
+    const ownerAdmin = await prisma.user.findFirst({ where: { id: parsed.data.ownerAdminId, role: Role.ADMIN, isActive: true, ...(context.clientId ? { clientId: context.clientId } : {}) }, select: { id: true, clientId: true } });
     if (!ownerAdmin?.clientId) { response.status(400).json({ error: "The selected administrator is inactive or has no client assignment" }); return; }
     clientId = ownerAdmin.clientId;
     createdByUserId = ownerAdmin.id;
@@ -63,7 +63,7 @@ export async function createAdminEmployee(request: Request, response: Response):
   if (!(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) { response.status(400).json({ error: "Client not found" }); return; }
   try {
     const passwordHash = await hashPassword(parsed.data.password);
-    const user = await prisma.user.create({ data: { username: parsed.data.username, passwordHash, mustChangePassword: true, role: Role.EMPLOYEE, clientId, createdByUserId, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } } }, include: employeeInclude });
+    const user = await prisma.user.create({ data: { username: parsed.data.username, passwordHash, mustChangePassword: true, role: Role.EMPLOYEE, clientId, createdByUserId, employee: { create: { firstName: parsed.data.firstName, lastName: parsed.data.lastName } }, memberships: { create: { clientId, role: MembershipRole.EMPLOYEE } } }, include: employeeInclude });
     await recordAudit({ actorUserId: auth.sub, clientId, action: "CREATE", entityType: "Employee", entityId: user.id, details: { username: user.username, clientId, ownerAdminId: createdByUserId } });
     response.status(201).json({ employee: employeeView(user) });
   } catch (error: unknown) {
@@ -80,6 +80,10 @@ export async function updateAdminEmployeeStatus(request: Request, response: Resp
   const id = String(request.params.id);
   const updated = await prisma.user.updateMany({ where: { id, ...context.employeeUserWhere }, data: parsed.data });
   if (updated.count === 0) { response.status(404).json({ error: "Employee not found" }); return; }
+  await prisma.$transaction([
+    prisma.organizationMembership.updateMany({ where: { userId: id }, data: { status: parsed.data.isActive ? MembershipStatus.ACTIVE : MembershipStatus.INACTIVE } }),
+    ...(!parsed.data.isActive ? [prisma.authSession.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })] : []),
+  ]);
   const user = await prisma.user.findUniqueOrThrow({ where: { id }, include: employeeInclude });
   await recordAudit({ actorUserId: response.locals.auth.sub, clientId: user.clientId ?? undefined, action: parsed.data.isActive ? "ACTIVATE" : "DEACTIVATE", entityType: "Employee", entityId: id, details: { isActive: parsed.data.isActive } });
   response.json({ employee: employeeView(user) });

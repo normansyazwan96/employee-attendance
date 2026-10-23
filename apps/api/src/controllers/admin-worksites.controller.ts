@@ -1,8 +1,8 @@
-import { Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../services/prisma.js";
 import { recordAudit } from "../services/audit.js";
+import { getAdminContext } from "../services/admin-scope.js";
 
 const worksiteSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -13,10 +13,8 @@ const worksiteSchema = z.object({
 });
 
 async function clientScope(response: Response): Promise<string | null | undefined> {
-  const auth = response.locals.auth as { sub: string; role: Role };
-  if (auth.role === Role.DEV_ADMIN) return undefined;
-  const user = await prisma.user.findUnique({ where: { id: auth.sub }, select: { clientId: true } });
-  return user?.clientId ?? null;
+  const context = await getAdminContext(response);
+  return context ? context.clientId : null;
 }
 
 function parseWorksite(response: Response, body: unknown): z.infer<typeof worksiteSchema> | null {

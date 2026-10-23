@@ -1,7 +1,7 @@
 import { prisma } from "./prisma.js";
 
 export type Location = { latitude: number; longitude: number; accuracy: number };
-type LocationValidation = { valid: boolean; reason?: string; worksite?: { id: string; name: string; distanceMeters: number; radiusMeters: number } };
+export type LocationValidation = { valid: boolean; reason?: string; worksite?: { id: string; name: string; distanceMeters: number; radiusMeters: number } };
 
 function distanceMeters(from: Location, to: { latitude: number; longitude: number }): number {
   const radians = (value: number): number => value * Math.PI / 180;

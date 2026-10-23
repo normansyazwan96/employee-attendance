@@ -13,7 +13,7 @@ async function attendanceScope(response: Response, query: { from?: string; to?: 
   if (!parsed.success || (parsed.data.from && parsed.data.to && parsed.data.from > parsed.data.to)) { response.status(400).json({ error: "Use valid date filters" }); return null; }
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return null; }
-  const scope = context.auth.role === Role.DEV_ADMIN ? {} : { employee: { user: context.employeeUserWhere } };
+  const scope = context.auth.role === Role.DEV_ADMIN && !context.clientId ? {} : { employee: { user: context.employeeUserWhere } };
   return { parsed: parsed.data, where: { ...scope, ...(parsed.data.from || parsed.data.to ? { workDate: { ...(parsed.data.from ? { gte: parsed.data.from } : {}), ...(parsed.data.to ? { lte: parsed.data.to } : {}) } } : {}) } };
 }
 
@@ -22,7 +22,7 @@ export async function getAdminAttendance(request: Request, response: Response): 
   if (!parsed.success || (parsed.data.from && parsed.data.to && parsed.data.from > parsed.data.to)) { response.status(400).json({ error: "Use valid date filters" }); return; }
   const context = await getAdminContext(response);
   if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
-  const scope = context.auth.role === Role.DEV_ADMIN ? {} : { employee: { user: context.employeeUserWhere } };
+  const scope = context.auth.role === Role.DEV_ADMIN && !context.clientId ? {} : { employee: { user: context.employeeUserWhere } };
   const where = { ...scope, ...(parsed.data.from || parsed.data.to ? { workDate: { ...(parsed.data.from ? { gte: parsed.data.from } : {}), ...(parsed.data.to ? { lte: parsed.data.to } : {}) } } : {}) };
   const [attendance, total] = await Promise.all([prisma.attendanceRecord.findMany({
     where,

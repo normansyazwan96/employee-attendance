@@ -14,10 +14,82 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "WEBHOOK_QUEUE", "queue": "employee-attendance-webhooks" },
+      { "binding": "PAYROLL_EXPORT_QUEUE", "queue": "employee-attendance-payroll-exports" }
+    ],
+    "consumers": [
+      { "queue": "employee-attendance-webhooks", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-webhooks-dead-letter" },
+      { "queue": "employee-attendance-webhooks-dead-letter", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 1 },
+      { "queue": "employee-attendance-payroll-exports", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-payroll-exports-dead-letter" },
+      { "queue": "employee-attendance-payroll-exports-dead-letter", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 1 }
+    ]
+  },
+  "r2_buckets": [],
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "523c3edad3a547d7a81ab9bb13b09a40" }
+  ],
+  "ratelimits": [
+    { "name": "AUTH_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
   "vars": {
-    "CLIENT_ORIGIN": "https://employee-attendance-api-ruby.vercel.app",
-    "CLIENT_ORIGINS": "https://employee-attendance-api-ruby.vercel.app",
+    "APP_ENV": "production",
+    "CLIENT_ORIGIN": "https://employee-attendance.floweaversolutions.workers.dev",
+    "CLIENT_ORIGINS": "https://employee-attendance.floweaversolutions.workers.dev,https://employee-attendance-api-ruby.vercel.app",
     "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
-    "WEBHOOK_URL": ""
+    "APP_BASE_URL": "https://employee-attendance.floweaversolutions.workers.dev",
+    "WEBHOOK_URL": "",
+    "FEATURE_ATTENDANCE_V2": "true",
+    "FEATURE_WORKFORCE_V2": "true",
+    "FEATURE_PAYROLL": "false"
+  },
+  "env": {
+    "staging": {
+      "workers_dev": true,
+      "preview_urls": false,
+      "assets": {
+        "directory": "./apps/web/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*"]
+      },
+      "triggers": {
+        "crons": ["*/5 * * * *"]
+      },
+      "queues": {
+        "producers": [
+          { "binding": "WEBHOOK_QUEUE", "queue": "employee-attendance-staging-webhooks" },
+          { "binding": "PAYROLL_EXPORT_QUEUE", "queue": "employee-attendance-staging-payroll-exports" }
+        ],
+        "consumers": [
+          { "queue": "employee-attendance-staging-webhooks", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-staging-webhooks-dead-letter" },
+          { "queue": "employee-attendance-staging-webhooks-dead-letter", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 1 },
+          { "queue": "employee-attendance-staging-payroll-exports", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-staging-payroll-exports-dead-letter" },
+          { "queue": "employee-attendance-staging-payroll-exports-dead-letter", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 1 }
+        ]
+      },
+      "r2_buckets": [],
+      "hyperdrive": [
+        { "binding": "HYPERDRIVE", "id": "048d10cd46674a54aff23b909056cbfb" }
+      ],
+      "ratelimits": [
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
+      ],
+      "vars": {
+        "APP_ENV": "staging",
+        "CLIENT_ORIGIN": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "CLIENT_ORIGINS": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
+        "APP_BASE_URL": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "WEBHOOK_URL": "",
+        "FEATURE_ATTENDANCE_V2": "true",
+        "FEATURE_WORKFORCE_V2": "true",
+        "FEATURE_PAYROLL": "false"
+      }
+    }
   }
 }

@@ -1,0 +1,13 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { getWorkPolicy, updateWorkPolicy, type WorkPolicy } from "../lib/workforce";
+import { useLanguage } from "../lib/language-context";
+
+export function WorkPolicyPanel(): JSX.Element {
+  const { language } = useLanguage(); const ms = language === "ms";
+  const [policy, setPolicy] = useState<WorkPolicy | null>(null); const [message, setMessage] = useState(""); const [saving, setSaving] = useState(false);
+  useEffect(() => { getWorkPolicy().then(setPolicy).catch((caught) => setMessage(caught instanceof Error ? caught.message : "Unable to load policy")); }, []);
+  if (!policy) return <p className="text-sm text-slate-500">{message || (ms ? "Memuatkan polisi..." : "Loading policy...")}</p>;
+  const fields: Array<[keyof WorkPolicy, string]> = [["gracePeriodMinutes", ms ? "Kelonggaran lewat (minit)" : "Late grace (minutes)"], ["defaultBreakMinutes", ms ? "Rehat lalai (minit)" : "Default break (minutes)"], ["roundingIncrement", ms ? "Pembundaran (minit)" : "Rounding increment"], ["overtimeThreshold", ms ? "Ambang lebih masa (minit)" : "Overtime threshold"], ["maximumShiftMinutes", ms ? "Syif maksimum (minit)" : "Maximum shift"], ["missedClockOutMinutes", ms ? "Had terlupa keluar (minit)" : "Missed clock-out threshold"], ["maximumGpsAccuracy", ms ? "Ketepatan GPS maksimum (meter)" : "Maximum GPS accuracy"], ["exactGpsRetentionDays", ms ? "Simpan GPS tepat (hari)" : "Exact GPS retention (days)"]];
+  async function save(event: FormEvent): Promise<void> { event.preventDefault(); setSaving(true); setMessage(""); try { setPolicy(await updateWorkPolicy(policy!)); setMessage(ms ? "Polisi disimpan." : "Policy saved."); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "Unable to save policy"); } finally { setSaving(false); } }
+  return <form onSubmit={(event) => void save(event)} className="glass-panel rounded-lg p-5"><div className="grid gap-4 sm:grid-cols-2">{fields.map(([key, label]) => <label key={key} className="text-sm font-semibold text-slate-700">{label}<input type="number" required min="0" value={policy[key]} onChange={(event) => setPolicy({ ...policy, [key]: Number(event.target.value) })} className="mt-2 h-11 w-full rounded-md border border-slate-300 bg-white/80 px-3 font-normal"/></label>)}</div>{message && <p className="mt-4 text-sm text-slate-600">{message}</p>}<button disabled={saving} className="mt-5 h-11 rounded-md bg-ink px-5 text-sm font-semibold text-white disabled:opacity-50">{saving ? (ms ? "Menyimpan..." : "Saving...") : (ms ? "Simpan polisi" : "Save policy")}</button></form>;
+}
