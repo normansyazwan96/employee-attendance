@@ -1,4 +1,4 @@
-import { ExportFormat, ExportJobStatus, PayPeriodStatus } from "@prisma/client";
+import { ExportFormat, ExportJobStatus, PayPeriodStatus, PayrollAdjustmentDecisionOutcome, PayrollAdjustmentDirection, Prisma } from "@prisma/client";
 import { createCsv, createXlsx, type ExportCell } from "./spreadsheet-export.js";
 import { logger } from "./logger.js";
 import { prisma } from "./prisma.js";
@@ -13,10 +13,24 @@ export type PrivateBucket = {
 
 let exportQueue: ExportQueueProducer | undefined;
 let exportBucket: PrivateBucket | undefined;
+const exportColumns = ["employeeNumber", "username", "employeeName", "calculationVersion", "basePay", "regularPay", "overtimePay", "restDayPay", "publicHolidayPay", "paidLeavePay", "additionalEarnings", "grossPay", "unpaidLeaveDeduction", "otherDeductions", "advanceDeduction", "epfEmployee", "epfEmployer", "socsoEmployee", "socsoEmployer", "eisEmployee", "eisEmployer", "employerContributions", "totalDeductions", "calculatedPay", "adjustmentEarnings", "adjustmentDeductions", "finalCalculatedPay", "warnings"] as const;
+const exportHeaders: Record<(typeof exportColumns)[number], string> = { employeeNumber: "Employee number", username: "Username", employeeName: "Employee name", calculationVersion: "Calculation version", basePay: "Base pay (MYR)", regularPay: "Regular pay (MYR)", overtimePay: "Overtime pay (MYR)", restDayPay: "Rest day pay (MYR)", publicHolidayPay: "Public holiday pay (MYR)", paidLeavePay: "Paid leave pay (MYR)", additionalEarnings: "Additional earnings (MYR)", grossPay: "Gross pay (MYR)", unpaidLeaveDeduction: "Unpaid leave deduction (MYR)", otherDeductions: "Other deductions (MYR)", advanceDeduction: "Advance deduction (MYR)", epfEmployee: "EPF employee (MYR)", epfEmployer: "EPF employer (MYR)", socsoEmployee: "SOCSO employee (MYR)", socsoEmployer: "SOCSO employer (MYR)", eisEmployee: "EIS employee (MYR)", eisEmployer: "EIS employer (MYR)", employerContributions: "Total employer contributions (MYR)", totalDeductions: "Total deductions (MYR)", calculatedPay: "Locked calculated pay (MYR)", adjustmentEarnings: "Approved adjustment earnings (MYR)", adjustmentDeductions: "Approved adjustment deductions (MYR)", finalCalculatedPay: "Final calculated pay (MYR)", warnings: "Warnings" };
+type ExportTemplate = { columns?: unknown; headers?: unknown } | null;
+const lockedCalculationInclude = {
+  results: {
+    include: { employee: { include: { user: { select: { username: true } } } }, monetaryAdjustments: { include: { decision: true } } },
+    orderBy: [{ employee: { firstName: "asc" as const } }, { employee: { lastName: "asc" as const } }],
+  },
+} satisfies Prisma.PayrollCalculationRunInclude;
+type LoadedCalculation = Prisma.PayrollCalculationRunGetPayload<{ include: typeof lockedCalculationInclude }>;
 
 export function configurePayrollExport(queue: ExportQueueProducer | undefined, bucket: PrivateBucket | undefined): void {
   exportQueue = queue;
   exportBucket = bucket;
+}
+
+export function isPayrollExportObjectKeyOwned(input: { id: string; clientId: string; payPeriodId: string; r2Key: string }): boolean {
+  return input.r2Key.startsWith(`${input.clientId}/${input.payPeriodId}/${input.id}/`);
 }
 
 export async function enqueuePayrollExport(jobId: string): Promise<void> {
@@ -24,19 +38,27 @@ export async function enqueuePayrollExport(jobId: string): Promise<void> {
   await exportQueue.send({ jobId });
 }
 
-function exportRows(job: Awaited<ReturnType<typeof loadExportJob>>): ExportCell[][] {
+export function payrollExportRows(job: Awaited<ReturnType<typeof loadExportJob>>): ExportCell[][] {
   if (!job) return [];
-  const defaults = ["employeeNumber", "username", "employeeName", "workDate", "regularMinutes", "overtimeMinutes", "paidLeaveMinutes", "unpaidLeaveMinutes", "leaveMinutes", "breakMinutes", "lateMinutes", "earlyDepartureMinutes", "isAbsent", "exceptions", "adjustmentMinutes"] as const;
-  const standardHeaders: Record<(typeof defaults)[number], string> = { employeeNumber: "Employee number", username: "Username", employeeName: "Employee name", workDate: "Work date", regularMinutes: "Regular minutes", overtimeMinutes: "Overtime minutes", paidLeaveMinutes: "Paid leave minutes", unpaidLeaveMinutes: "Unpaid leave minutes", leaveMinutes: "Leave minutes", breakMinutes: "Break minutes", lateMinutes: "Late minutes", earlyDepartureMinutes: "Early departure minutes", isAbsent: "Absent", exceptions: "Exceptions", adjustmentMinutes: "Adjustment minutes" };
+  if (job.clientId !== job.payPeriod.clientId) throw new Error("Payroll export organization mismatch");
   const template = job.template && typeof job.template === "object" && !Array.isArray(job.template) ? job.template as { columns?: unknown; headers?: unknown } : null;
-  const allowed = new Set<string>(defaults);
-  const configured = Array.isArray(template?.columns) ? template.columns.filter((column): column is (typeof defaults)[number] => typeof column === "string" && allowed.has(column)) : [];
-  const columns = configured.length > 0 ? configured : [...defaults];
+  const calculation = job.payPeriod.calculationRuns.find((candidate) => candidate.id === job.payPeriod.approvedCalculationRunId && candidate.clientId === job.clientId);
+  if (!calculation) throw new Error("Approved locked payroll calculation not found");
+  return calculationExportRows(calculation, template);
+}
+
+function calculationExportRows(calculation: LoadedCalculation, template: ExportTemplate): ExportCell[][] {
+  const allowed = new Set<string>(exportColumns);
+  const configured = Array.isArray(template?.columns) ? template.columns.filter((column): column is (typeof exportColumns)[number] => typeof column === "string" && allowed.has(column)) : [];
+  const columns = configured.length > 0 ? configured : [...exportColumns];
   const customHeaders = template?.headers && typeof template.headers === "object" && !Array.isArray(template.headers) ? template.headers as Record<string, unknown> : {};
-  const headers = columns.map((column) => typeof customHeaders[column] === "string" ? customHeaders[column] as string : standardHeaders[column]);
-  const rows = job.payPeriod.timesheetDays.map((day) => {
-    const adjustmentMinutes = day.payrollAdjustments.reduce((sum, item) => sum + item.minutes, 0);
-    const values: Record<(typeof defaults)[number], ExportCell> = { employeeNumber: day.employee.employeeNumber, username: day.employee.user.username, employeeName: `${day.employee.firstName} ${day.employee.lastName}`, workDate: day.workDate, regularMinutes: day.regularMinutes, overtimeMinutes: day.overtimeMinutes, paidLeaveMinutes: day.paidLeaveMinutes, unpaidLeaveMinutes: day.unpaidLeaveMinutes, leaveMinutes: day.leaveMinutes, breakMinutes: day.breakMinutes, lateMinutes: day.lateMinutes, earlyDepartureMinutes: day.earlyDepartureMinutes, isAbsent: day.isAbsent, exceptions: day.exceptionCodes.join("; "), adjustmentMinutes };
+  const headers = columns.map((column) => typeof customHeaders[column] === "string" ? customHeaders[column] as string : exportHeaders[column]);
+  const ringgit = (sen: number): number => sen / 100;
+  const rows = calculation.results.map((result) => {
+    const approved = result.monetaryAdjustments.filter((item) => item.decision?.outcome === PayrollAdjustmentDecisionOutcome.APPROVED);
+    const adjustmentEarningsSen = approved.filter((item) => item.direction === PayrollAdjustmentDirection.EARNING).reduce((total, item) => total + item.amountSen, 0);
+    const adjustmentDeductionsSen = approved.filter((item) => item.direction === PayrollAdjustmentDirection.DEDUCTION).reduce((total, item) => total + item.amountSen, 0);
+    const values: Record<(typeof exportColumns)[number], ExportCell> = { employeeNumber: result.employee.employeeNumber, username: result.employee.user.username, employeeName: `${result.employee.firstName} ${result.employee.lastName}`, calculationVersion: calculation.version, basePay: ringgit(result.basePaySen), regularPay: ringgit(result.regularPaySen), overtimePay: ringgit(result.overtimePaySen), restDayPay: ringgit(result.restDayPaySen), publicHolidayPay: ringgit(result.publicHolidayPaySen), paidLeavePay: ringgit(result.paidLeavePaySen), additionalEarnings: ringgit(result.additionalEarningsSen), grossPay: ringgit(result.grossPaySen), unpaidLeaveDeduction: ringgit(result.unpaidLeaveDeductionSen), otherDeductions: ringgit(result.otherDeductionsSen), advanceDeduction: ringgit(result.advanceDeductionSen), epfEmployee: ringgit(result.epfEmployeeSen), epfEmployer: ringgit(result.epfEmployerSen), socsoEmployee: ringgit(result.socsoEmployeeSen), socsoEmployer: ringgit(result.socsoEmployerSen), eisEmployee: ringgit(result.eisEmployeeSen), eisEmployer: ringgit(result.eisEmployerSen), employerContributions: ringgit(result.employerContributionsSen), totalDeductions: ringgit(result.totalDeductionsSen), calculatedPay: ringgit(result.calculatedPaySen), adjustmentEarnings: ringgit(adjustmentEarningsSen), adjustmentDeductions: ringgit(adjustmentDeductionsSen), finalCalculatedPay: ringgit(Math.max(result.calculatedPaySen + adjustmentEarningsSen - adjustmentDeductionsSen, 0)), warnings: [...result.blockingWarnings, ...result.warnings].join("; ") };
     return columns.map((column) => values[column]);
   });
   return [headers, ...rows];
@@ -48,14 +70,33 @@ async function loadExportJob(jobId: string) {
     include: {
       payPeriod: {
         include: {
-          timesheetDays: {
-            include: { employee: { include: { user: { select: { username: true } } } }, payrollAdjustments: true },
-            orderBy: [{ workDate: "asc" }, { employeeId: "asc" }],
+          calculationRuns: {
+            where: { status: "LOCKED" },
+            include: lockedCalculationInclude,
+            orderBy: { version: "desc" },
           },
         },
       },
     },
   });
+}
+
+export async function generateDirectPayrollExport(input: { clientId: string; payPeriodId: string; format: ExportFormat; template: ExportTemplate }) {
+  const period = await prisma.payPeriod.findFirst({
+    where: { id: input.payPeriodId, clientId: input.clientId, status: { in: [PayPeriodStatus.LOCKED, PayPeriodStatus.EXPORTED] } },
+    select: { id: true, name: true, approvedCalculationRunId: true },
+  });
+  if (!period) throw new Error("PAY_PERIOD_NOT_LOCKED");
+  const calculation = period.approvedCalculationRunId
+    ? await prisma.payrollCalculationRun.findFirst({ where: { id: period.approvedCalculationRunId, clientId: input.clientId, payPeriodId: period.id, status: "LOCKED" }, include: lockedCalculationInclude })
+    : null;
+  if (!calculation) throw new Error("PAYROLL_CALCULATION_REQUIRED");
+  const rows = calculationExportRows(calculation, input.template);
+  const extension = input.format === ExportFormat.XLSX ? "xlsx" : "csv";
+  const contentType = input.format === ExportFormat.XLSX ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv; charset=utf-8";
+  const data = input.format === ExportFormat.XLSX ? createXlsx(rows) : createCsv(rows);
+  const safePeriod = period.name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "pay-period";
+  return { data, contentType, fileName: `${safePeriod}-payroll.${extension}`, calculationId: calculation.id, calculationVersion: calculation.version };
 }
 
 export async function processPayrollExport(jobId: string): Promise<void> {
@@ -65,12 +106,12 @@ export async function processPayrollExport(jobId: string): Promise<void> {
   try {
     const job = await loadExportJob(jobId);
     if (!job) return;
-    const rows = exportRows(job);
+    const rows = payrollExportRows(job);
     const extension = job.format === ExportFormat.XLSX ? "xlsx" : "csv";
     const contentType = job.format === ExportFormat.XLSX ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv; charset=utf-8";
     const data = job.format === ExportFormat.XLSX ? createXlsx(rows) : createCsv(rows);
     const safePeriod = job.payPeriod.name.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "pay-period";
-    const fileName = `${safePeriod}.${extension}`;
+    const fileName = `${safePeriod}-payroll.${extension}`;
     const key = `${job.clientId}/${job.payPeriodId}/${job.id}/${fileName}`;
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await exportBucket.put(key, data, { httpMetadata: { contentType }, customMetadata: { exportJobId: job.id, expiresAt: expiresAt.toISOString() } });

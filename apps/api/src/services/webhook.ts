@@ -22,12 +22,20 @@ export class WebhookHttpError extends Error {
   }
 }
 
+export class WebhookConfigurationError extends Error {
+  constructor() {
+    super("Attendance webhook delivery requires a secret of at least 32 characters");
+  }
+}
+
 export async function sendAttendanceWebhook(payload: AttendanceWebhookPayload, config: AttendanceWebhookConfig = {}): Promise<number | null> {
   const url = config.url ?? env.WEBHOOK_URL;
   if (!url) return null;
+  const secret = config.secret ?? env.WEBHOOK_SECRET;
+  if (secret.length < 32) throw new WebhookConfigurationError();
 
   const body = JSON.stringify(payload);
-  const signature = createHmac("sha256", config.secret ?? env.WEBHOOK_SECRET ?? "")
+  const signature = createHmac("sha256", secret)
     .update(body)
     .digest("hex");
 

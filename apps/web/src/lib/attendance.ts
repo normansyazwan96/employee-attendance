@@ -8,6 +8,13 @@ export type AttendanceEvent = { id: string; type: "CLOCK_IN" | "CLOCK_OUT" | "BR
 export type TimesheetDay = { id: string; workDate: string; state: "OPEN" | "COMPLETE" | "EXCEPTION" | "APPROVED" | "LOCKED"; firstClockInAt: string | null; lastClockOutAt: string | null; regularMinutes: number; overtimeMinutes: number; breakMinutes: number; leaveMinutes: number; exceptionCodes: string[] };
 export type ScheduleAssignment = { effectiveFrom: string; effectiveTo: string | null; shiftTemplate: { name: string; workDays: number[]; startTime: string; endTime: string; isOvernight: boolean } };
 
+export class AttendanceRequestError extends Error {
+  constructor(message: string, readonly code?: string, readonly location?: LocationStatus) {
+    super(message);
+    this.name = "AttendanceRequestError";
+  }
+}
+
 async function request(path: string, method = "GET", location?: Location): Promise<Attendance | null> {
   const response = await authenticatedFetch(`/api/v1${path}`, { method, headers: { ...(location ? { "Content-Type": "application/json" } : {}) }, ...(location ? { body: JSON.stringify({ location }) } : {}) });
   const body = await response.json() as { attendance?: Attendance; error?: string };
@@ -27,7 +34,8 @@ async function eventRequest(action: "clock-in" | "clock-out" | "break-start" | "
   const body = await response.json() as { attendance?: Attendance; error?: string | { message?: string } };
   if (!response.ok || !body.attendance) {
     const message = typeof body.error === "string" ? body.error : body.error?.message;
-    throw new Error(message ?? "Unable to update attendance");
+    const code = typeof body.error === "string" ? undefined : (body.error as { code?: string } | undefined)?.code;
+    throw new AttendanceRequestError(message ?? "Unable to update attendance", code, (body as { location?: LocationStatus }).location);
   }
   sessionStorage.removeItem(pendingKey);
   return body.attendance;

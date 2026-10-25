@@ -98,27 +98,123 @@ enum ExportFormat {
   XLSX
 }
 
+enum PayrollJurisdiction {
+  PENINSULAR_LABUAN
+  SABAH
+  SARAWAK
+}
+
+enum PayrollFrequency {
+  MONTHLY
+  SEMI_MONTHLY
+  WEEKLY
+}
+
+enum PayType {
+  MONTHLY
+  DAILY
+  HOURLY
+}
+
+enum PayrollComponentType {
+  EARNING
+  DEDUCTION
+  ADVANCE_REPAYMENT
+}
+
+enum PayrollCalculationBasis {
+  FIXED_AMOUNT
+  PER_DAY
+  PER_HOUR
+  PERCENTAGE
+}
+
+enum PayrollCalculationStatus {
+  DRAFT
+  LOCKED
+}
+
+enum PayrollLineDirection {
+  EARNING
+  DEDUCTION
+  EMPLOYER_CONTRIBUTION
+}
+
+enum EpfContributionCategory {
+  STANDARD_UNDER_60
+  PR_OR_PRE_1998_60_PLUS
+  MALAYSIAN_60_PLUS
+  NON_MALAYSIAN
+  EXEMPT
+}
+
+enum SocsoContributionCategory {
+  FIRST
+  SECOND
+  EXEMPT
+}
+
+enum PayrollAdjustmentDirection {
+  EARNING
+  DEDUCTION
+}
+
+enum PayrollAdjustmentDecisionOutcome {
+  APPROVED
+  REJECTED
+}
+
+enum PayrollStatementDeliveryStatus {
+  SENT
+  FAILED
+}
+
+enum PayrollLineCategory {
+  BASE_PAY
+  REGULAR_PAY
+  OVERTIME
+  REST_DAY
+  PUBLIC_HOLIDAY
+  PAID_LEAVE
+  UNPAID_LEAVE
+  ALLOWANCE
+  DEDUCTION
+  ADVANCE_REPAYMENT
+  EPF
+  SOCSO
+  EIS
+}
+
 model Client {
-  id                String                   @id @default(cuid())
-  name              String
-  stateCode         String?
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
-  users             User[]
-  memberships       OrganizationMembership[]
-  worksites         Worksite[]
-  attendanceEvents  AttendanceEvent[]
-  timesheetDays     TimesheetDay[]
-  webhookDeliveries WebhookDelivery[]
-  departments       Department[]
-  workPolicy        WorkPolicy?
-  shiftTemplates    ShiftTemplate[]
-  holidays          Holiday[]
-  leaveTypes        LeaveType[]
-  leaveRequests     LeaveRequest[]
-  payPeriods        PayPeriod[]
-  exportJobs        ExportJob[]
-  notifications     Notification[]
+  id                             String                              @id @default(cuid())
+  name                           String
+  stateCode                      String?
+  isTest                         Boolean                             @default(false)
+  createdAt                      DateTime                            @default(now())
+  updatedAt                      DateTime                            @updatedAt
+  users                          User[]
+  memberships                    OrganizationMembership[]
+  worksites                      Worksite[]
+  attendanceEvents               AttendanceEvent[]
+  timesheetDays                  TimesheetDay[]
+  webhookDeliveries              WebhookDelivery[]
+  departments                    Department[]
+  workPolicy                     WorkPolicy?
+  shiftTemplates                 ShiftTemplate[]
+  holidays                       Holiday[]
+  leaveTypes                     LeaveType[]
+  leaveRequests                  LeaveRequest[]
+  payPeriods                     PayPeriod[]
+  payrollSettings                PayrollSettings?
+  payrollComponents              PayrollComponent[]
+  payComponentAssignments        EmployeePayComponent[]
+  payrollCalculationRuns         PayrollCalculationRun[]
+  payrollMonetaryAdjustments     PayrollMonetaryAdjustment[]
+  payrollAdjustmentDecisions     PayrollMonetaryAdjustmentDecision[]
+  payrollStatementDeliveries     PayrollStatementDelivery[]
+  payrollWarningAcknowledgements PayrollWarningAcknowledgement[]
+  exportJobs                     ExportJob[]
+  notifications                  Notification[]
 }
 
 model User {
@@ -130,6 +226,7 @@ model User {
   mustChangePassword      Boolean                  @default(false)
   role                    Role                     @default(EMPLOYEE)
   platformRole            PlatformRole             @default(USER)
+  isGlobalAdmin           Boolean                  @default(false)
   isActive                Boolean                  @default(true)
   failedLoginAttempts     Int                      @default(0)
   lockedUntil             DateTime?
@@ -146,6 +243,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   mfaCredential           MfaCredential?
   createdAttendanceEvents AttendanceEvent[]        @relation("AttendanceEventCreator")
+  ownedWorksites          Worksite[]               @relation("WorksiteOwnerAdmin")
   notifications           Notification[]
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
@@ -160,6 +258,7 @@ model OrganizationMembership {
   role                MembershipRole
   status              MembershipStatus         @default(ACTIVE)
   managerMembershipId String?
+  canManagePayroll    Boolean                  @default(false)
   user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   client              Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
   manager             OrganizationMembership?  @relation("MembershipManager", fields: [managerMembershipId], references: [id], onDelete: SetNull)
@@ -227,30 +326,36 @@ model MfaRecoveryCode {
 }
 
 model Employee {
-  id                  String                 @id @default(cuid())
-  firstName           String
-  lastName            String
-  userId              String                 @unique
-  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attendance          AttendanceRecord[]
-  attendanceEvents    AttendanceEvent[]
-  timesheetDays       TimesheetDay[]
-  schedule            EmployeeSchedule?
-  employeeNumber      String?
-  employmentStatus    EmploymentStatus       @default(ACTIVE)
-  joinDate            DateTime?
-  terminationDate     DateTime?
-  departmentId        String?
-  department          Department?            @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  managerEmployeeId   String?
-  manager             Employee?              @relation("EmployeeManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
-  directReports       Employee[]             @relation("EmployeeManager")
-  scheduleAssignments ScheduleAssignment[]
-  correctionRequests  AttendanceCorrection[]
-  leaveBalances       LeaveBalance[]
-  leaveRequests       LeaveRequest[]
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id                         String                      @id @default(cuid())
+  firstName                  String
+  lastName                   String
+  userId                     String                      @unique
+  user                       User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attendance                 AttendanceRecord[]
+  attendanceEvents           AttendanceEvent[]
+  timesheetDays              TimesheetDay[]
+  schedule                   EmployeeSchedule?
+  employeeNumber             String?
+  employmentStatus           EmploymentStatus            @default(ACTIVE)
+  joinDate                   DateTime?
+  terminationDate            DateTime?
+  departmentId               String?
+  department                 Department?                 @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  managerEmployeeId          String?
+  manager                    Employee?                   @relation("EmployeeManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+  directReports              Employee[]                  @relation("EmployeeManager")
+  scheduleAssignments        ScheduleAssignment[]
+  correctionRequests         AttendanceCorrection[]
+  leaveBalances              LeaveBalance[]
+  leaveRequests              LeaveRequest[]
+  payProfiles                PayProfile[]
+  payComponents              EmployeePayComponent[]
+  payrollResults             PayrollCalculationResult[]
+  statutoryProfiles          EmployeeStatutoryProfile[]
+  payrollMonetaryAdjustments PayrollMonetaryAdjustment[]
+  payrollStatementDeliveries PayrollStatementDelivery[]
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
 
   @@index([departmentId])
   @@index([managerEmployeeId])
@@ -337,6 +442,20 @@ model Holiday {
 
   @@unique([clientId, date, name])
   @@index([clientId, date])
+}
+
+model MalaysiaHoliday {
+  id               String   @id @default(cuid())
+  year             Int
+  stateCode        String
+  date             String
+  name             String
+  type             String   @default("public")
+  importedByUserId String?
+  importedAt       DateTime @default(now())
+
+  @@unique([year, stateCode, date, name])
+  @@index([year, date, stateCode])
 }
 
 model EmployeeSchedule {
@@ -484,27 +603,303 @@ model AttendanceCorrection {
 }
 
 model PayPeriod {
-  id               String              @id @default(cuid())
-  clientId         String
-  client           Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name             String
-  startDate        String
-  endDate          String
-  status           PayPeriodStatus     @default(DRAFT)
-  reviewedByUserId String?
-  reviewedAt       DateTime?
-  approvedByUserId String?
-  approvedAt       DateTime?
-  lockedByUserId   String?
-  lockedAt         DateTime?
-  timesheetDays    TimesheetDay[]
-  adjustments      PayrollAdjustment[]
-  exportJobs       ExportJob[]
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id                       String                      @id @default(cuid())
+  clientId                 String
+  client                   Client                      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name                     String
+  startDate                String
+  endDate                  String
+  status                   PayPeriodStatus             @default(DRAFT)
+  reviewedByUserId         String?
+  reviewedAt               DateTime?
+  reviewedCalculationRunId String?
+  approvedByUserId         String?
+  approvedAt               DateTime?
+  approvedCalculationRunId String?
+  lockedByUserId           String?
+  lockedAt                 DateTime?
+  timesheetDays            TimesheetDay[]
+  adjustments              PayrollAdjustment[]
+  calculationRuns          PayrollCalculationRun[]
+  monetaryAdjustments      PayrollMonetaryAdjustment[]
+  exportJobs               ExportJob[]
+  statementDeliveries      PayrollStatementDelivery[]
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
 
   @@unique([clientId, startDate, endDate])
   @@index([clientId, status, startDate])
+}
+
+model PayrollSettings {
+  id                            String              @id @default(cuid())
+  clientId                      String              @unique
+  client                        Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  jurisdiction                  PayrollJurisdiction @default(PENINSULAR_LABUAN)
+  currency                      String              @default("MYR")
+  payFrequency                  PayrollFrequency    @default(MONTHLY)
+  normalDailyMinutes            Int                 @default(480)
+  normalWeeklyMinutes           Int                 @default(2700)
+  salaryDivisor                 Int                 @default(26)
+  rulePackVersion               String              @default("MY-PEN-2023-01")
+  statutoryContributionsEnabled Boolean             @default(false)
+  statutoryRuleVersion          String              @default("MY-STAT-2025-10-01")
+  createdAt                     DateTime            @default(now())
+  updatedAt                     DateTime            @updatedAt
+}
+
+model PayProfile {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payType             PayType
+  baseRateSen         Int
+  normalDailyMinutes  Int
+  normalWeeklyMinutes Int
+  overtimeEligible    Boolean  @default(true)
+  effectiveFrom       String
+  effectiveTo         String?
+  createdByUserId     String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+}
+
+model EmployeeStatutoryProfile {
+  id              String                    @id @default(cuid())
+  employeeId      String
+  employee        Employee                  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  epfCategory     EpfContributionCategory
+  socsoCategory   SocsoContributionCategory
+  eisEligible     Boolean                   @default(true)
+  effectiveFrom   String
+  effectiveTo     String?
+  createdByUserId String
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+}
+
+model PayrollComponent {
+  id                   String                  @id @default(cuid())
+  clientId             String
+  client               Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  code                 String
+  name                 String
+  type                 PayrollComponentType
+  calculationBasis     PayrollCalculationBasis
+  defaultAmountSen     Int                     @default(0)
+  defaultPercentageBps Int?
+  epfEligible          Boolean                 @default(true)
+  socsoEligible        Boolean                 @default(true)
+  eisEligible          Boolean                 @default(true)
+  isActive             Boolean                 @default(true)
+  assignments          EmployeePayComponent[]
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  @@unique([clientId, code])
+  @@index([clientId, type, isActive])
+}
+
+model EmployeePayComponent {
+  id                    String                   @id @default(cuid())
+  clientId              String
+  client                Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  employeeId            String
+  employee              Employee                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollComponentId    String
+  payrollComponent      PayrollComponent         @relation(fields: [payrollComponentId], references: [id], onDelete: Restrict)
+  amountSen             Int                      @default(0)
+  percentageBasisPoints Int?
+  totalAmountSen        Int?
+  outstandingAmountSen  Int?
+  effectiveFrom         String
+  effectiveTo           String?
+  consentReference      String?
+  notes                 String?
+  isActive              Boolean                  @default(true)
+  createdByUserId       String
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  calculationLines      PayrollCalculationLine[]
+
+  @@unique([employeeId, payrollComponentId, effectiveFrom])
+  @@index([clientId, employeeId, isActive])
+  @@index([payrollComponentId, effectiveFrom, effectiveTo])
+}
+
+model PayrollCalculationRun {
+  id                    String                     @id @default(cuid())
+  clientId              String
+  client                Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  payPeriodId           String
+  payPeriod             PayPeriod                  @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  version               Int
+  status                PayrollCalculationStatus   @default(DRAFT)
+  rulePackVersion       String
+  inputHash             String
+  totalGrossSen         Int                        @default(0)
+  totalDeductionsSen    Int                        @default(0)
+  totalCalculatedPaySen Int                        @default(0)
+  expectedEmployeeCount Int                        @default(0)
+  warningCount          Int                        @default(0)
+  blockingWarningCount  Int                        @default(0)
+  calculatedByUserId    String
+  lockedAt              DateTime?
+  results               PayrollCalculationResult[]
+  createdAt             DateTime                   @default(now())
+
+  @@unique([payPeriodId, version])
+  @@index([clientId, createdAt])
+  @@index([payPeriodId, status, version])
+}
+
+model PayrollCalculationResult {
+  id                       String                          @id @default(cuid())
+  runId                    String
+  run                      PayrollCalculationRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeId               String
+  employee                 Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  basePaySen               Int                             @default(0)
+  regularPaySen            Int                             @default(0)
+  overtimePaySen           Int                             @default(0)
+  restDayPaySen            Int                             @default(0)
+  publicHolidayPaySen      Int                             @default(0)
+  paidLeavePaySen          Int                             @default(0)
+  unpaidLeaveDeductionSen  Int                             @default(0)
+  additionalEarningsSen    Int                             @default(0)
+  otherDeductionsSen       Int                             @default(0)
+  advanceDeductionSen      Int                             @default(0)
+  epfWagesSen              Int                             @default(0)
+  socsoWagesSen            Int                             @default(0)
+  eisWagesSen              Int                             @default(0)
+  epfEmployeeSen           Int                             @default(0)
+  epfEmployerSen           Int                             @default(0)
+  socsoEmployeeSen         Int                             @default(0)
+  socsoEmployerSen         Int                             @default(0)
+  eisEmployeeSen           Int                             @default(0)
+  eisEmployerSen           Int                             @default(0)
+  employerContributionsSen Int                             @default(0)
+  grossPaySen              Int                             @default(0)
+  totalDeductionsSen       Int                             @default(0)
+  calculatedPaySen         Int                             @default(0)
+  warnings                 String[]                        @default([])
+  blockingWarnings         String[]                        @default([])
+  payProfileSnapshot       Json?
+  inputSummary             Json
+  lines                    PayrollCalculationLine[]
+  monetaryAdjustments      PayrollMonetaryAdjustment[]
+  statementDeliveries      PayrollStatementDelivery[]
+  warningAcknowledgements  PayrollWarningAcknowledgement[]
+  createdAt                DateTime                        @default(now())
+
+  @@unique([runId, employeeId])
+  @@index([employeeId, createdAt])
+}
+
+model PayrollWarningAcknowledgement {
+  id                     String                   @id @default(cuid())
+  clientId               String
+  client                 Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  calculationResultId    String
+  calculationResult      PayrollCalculationResult @relation(fields: [calculationResultId], references: [id], onDelete: Cascade)
+  warningCode            String
+  note                   String
+  acknowledgedByUserId   String
+  acknowledgedByUsername String
+  createdAt              DateTime                 @default(now())
+
+  @@unique([calculationResultId, warningCode])
+  @@index([clientId, createdAt])
+  @@index([acknowledgedByUserId, createdAt])
+}
+
+model PayrollCalculationLine {
+  id                          String                   @id @default(cuid())
+  resultId                    String
+  result                      PayrollCalculationResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  direction                   PayrollLineDirection
+  category                    PayrollLineCategory
+  code                        String
+  name                        String
+  amountSen                   Int
+  basis                       String
+  sourceComponentAssignmentId String?
+  sourceComponentAssignment   EmployeePayComponent?    @relation(fields: [sourceComponentAssignmentId], references: [id], onDelete: SetNull)
+  metadata                    Json?
+  displayOrder                Int                      @default(0)
+  createdAt                   DateTime                 @default(now())
+
+  @@index([resultId, displayOrder])
+  @@index([sourceComponentAssignmentId])
+}
+
+model PayrollMonetaryAdjustment {
+  id                  String                             @id @default(cuid())
+  clientId            String
+  client              Client                             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  payPeriodId         String
+  payPeriod           PayPeriod                          @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  calculationResultId String
+  calculationResult   PayrollCalculationResult           @relation(fields: [calculationResultId], references: [id], onDelete: Restrict)
+  employeeId          String
+  employee            Employee                           @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  direction           PayrollAdjustmentDirection
+  code                String
+  name                String
+  amountSen           Int
+  reason              String
+  createdByUserId     String
+  createdAt           DateTime                           @default(now())
+  decision            PayrollMonetaryAdjustmentDecision?
+
+  @@index([clientId, payPeriodId, createdAt])
+  @@index([employeeId, payPeriodId, createdAt])
+  @@index([calculationResultId, createdAt])
+}
+
+model PayrollMonetaryAdjustmentDecision {
+  id              String                           @id @default(cuid())
+  clientId        String
+  client          Client                           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  adjustmentId    String                           @unique
+  adjustment      PayrollMonetaryAdjustment        @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+  outcome         PayrollAdjustmentDecisionOutcome
+  note            String
+  decidedByUserId String
+  createdAt       DateTime                         @default(now())
+
+  @@index([clientId, outcome, createdAt])
+  @@index([decidedByUserId, createdAt])
+}
+
+model PayrollStatementDelivery {
+  id                  String                         @id @default(cuid())
+  clientId            String
+  client              Client                         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  payPeriodId         String
+  payPeriod           PayPeriod                      @relation(fields: [payPeriodId], references: [id], onDelete: Restrict)
+  calculationResultId String
+  calculationResult   PayrollCalculationResult       @relation(fields: [calculationResultId], references: [id], onDelete: Restrict)
+  employeeId          String
+  employee            Employee                       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  recipientEmail      String
+  language            String                         @default("en")
+  fileName            String
+  status              PayrollStatementDeliveryStatus
+  providerMessageId   String?
+  failureReason       String?
+  requestedByUserId   String
+  createdAt           DateTime                       @default(now())
+
+  @@index([clientId, payPeriodId, createdAt])
+  @@index([employeeId, payPeriodId, createdAt])
+  @@index([requestedByUserId, createdAt])
 }
 
 model PayrollAdjustment {
@@ -648,7 +1043,10 @@ model Worksite {
   id               String            @id @default(cuid())
   clientId         String
   client           Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ownerAdminId     String?
+  ownerAdmin       User?             @relation("WorksiteOwnerAdmin", fields: [ownerAdminId], references: [id], onDelete: Restrict)
   name             String
+  stateCode        String            @default("14")
   latitude         Float
   longitude        Float
   radiusMeters     Int               @default(150)
@@ -657,7 +1055,7 @@ model Worksite {
   updatedAt        DateTime          @updatedAt
   attendanceEvents AttendanceEvent[]
 
-  @@unique([clientId, name])
+  @@index([clientId, ownerAdminId, isActive])
 }
 
 model AuditLog {

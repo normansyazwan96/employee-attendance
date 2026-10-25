@@ -19,4 +19,12 @@ describe("spreadsheet exports", () => {
     expect(worksheet).toContain("A &amp; B");
     expect(worksheet).toContain("<v>480</v>");
   });
+
+  it("neutralizes formula-like CSV strings without changing negative numbers", () => {
+    const csv = new TextDecoder().decode(createCsv([["=1+1", "+cmd", "-formula", "@SUM(A1:A2)", "\t=hidden", "\r=hidden", -42]]));
+    expect(csv).toContain("'=1+1,'+cmd,'-formula,'@SUM(A1:A2)");
+    expect(csv).toContain("'\t=hidden");
+    expect(csv).toContain("'\r=hidden");
+    expect(csv).toContain(",-42\r\n");
+  });
 });

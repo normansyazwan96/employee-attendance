@@ -1,0 +1,36 @@
+{
+  "source": "employee-attendance-staging",
+  "target": "employee-attendance-recovery-drill-2",
+  "startedAt": "2026-10-25T18:06:45.403Z",
+  "completedAt": "2026-10-25T18:07:09.702Z",
+  "elapsedSeconds": 24,
+  "passed": true,
+  "sourceTables": 42,
+  "restoredTables": 42,
+  "foreignKeyViolations": 0,
+  "integrity": "ok",
+  "sourceTotals": {
+    "organizations": 2,
+    "liveOrganizations": 0,
+    "testOrganizations": 2,
+    "users": 8,
+    "employees": 4,
+    "attendanceRecords": 150,
+    "attendanceEvents": 599,
+    "timesheetDays": 159,
+    "auditLogs": 61,
+    "latestAttendanceEventAt": 1792796520000
+  },
+  "restoredTotals": {
+    "organizations": 2,
+    "liveOrganizations": 0,
+    "testOrganizations": 2,
+    "users": 8,
+    "employees": 4,
+    "attendanceRecords": 150,
+    "attendanceEvents": 599,
+    "timesheetDays": 159,
+    "auditLogs": 61,
+    "latestAttendanceEventAt": 1792796520000
+  }
+}

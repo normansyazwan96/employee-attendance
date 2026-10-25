@@ -28,7 +28,7 @@ async function provision() {
     data: {
       name: clientName,
       workPolicy: { create: { maximumGpsAccuracy: 100 } },
-      worksites: { create: { name: "Load test worksite", latitude, longitude, radiusMeters: 500, isActive: true } },
+      worksites: { create: { name: "Load test worksite", latitude, longitude, radiusMeters: 500, isActive: true, ownerAdminId: null } },
     },
   });
   clientId = client.id;

@@ -29,7 +29,10 @@ function seedPassword(name: string): string {
 async function main(): Promise<void> {
   const mustChangePassword = process.env.SEED_MUST_CHANGE_PASSWORD !== "false";
   const client = await prisma.client.upsert({ where: { id: "acme-local" }, update: { name: "Acme Local" }, create: { id: "acme-local", name: "Acme Local" } });
-  await prisma.worksite.upsert({ where: { clientId_name: { clientId: client.id, name: "Acme Local HQ" } }, update: { latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150, isActive: true }, create: { clientId: client.id, name: "Acme Local HQ", latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150 } });
+  const seededWorksite = await prisma.worksite.findFirst({ where: { clientId: client.id, name: "Acme Local HQ", ownerAdminId: null }, select: { id: true } });
+  const worksiteData = { stateCode: client.stateCode ?? "14", latitude: 2.9084686453776176, longitude: 101.60997566744295, radiusMeters: 150, isActive: true, ownerAdminId: null };
+  if (seededWorksite) await prisma.worksite.update({ where: { id: seededWorksite.id }, data: worksiteData });
+  else await prisma.worksite.create({ data: { clientId: client.id, name: "Acme Local HQ", ...worksiteData } });
   const accounts = [
     { username: "devadmin", role: Role.DEV_ADMIN, clientId: null, password: seedPassword("SEED_DEV_ADMIN_PASSWORD") },
     { username: "admin", role: Role.ADMIN, clientId: client.id, password: seedPassword("SEED_ADMIN_PASSWORD") },
@@ -47,8 +50,8 @@ async function main(): Promise<void> {
   const john = await prisma.user.findUniqueOrThrow({ where: { username: "john.smith" } });
   await prisma.organizationMembership.upsert({
     where: { userId_clientId: { userId: seededAdmin.id, clientId: client.id } },
-    update: { role: MembershipRole.ADMIN, status: "ACTIVE" },
-    create: { userId: seededAdmin.id, clientId: client.id, role: MembershipRole.ADMIN },
+    update: { role: MembershipRole.ADMIN, status: "ACTIVE", canManagePayroll: true },
+    create: { userId: seededAdmin.id, clientId: client.id, role: MembershipRole.ADMIN, canManagePayroll: true },
   });
   await prisma.organizationMembership.upsert({
     where: { userId_clientId: { userId: john.id, clientId: client.id } },

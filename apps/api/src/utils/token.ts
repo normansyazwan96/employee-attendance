@@ -2,8 +2,9 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { env } from "../config/env.js";
 
-export type AuthTokenPayload = { sub: string; role: "EMPLOYEE" | "ADMIN" | "MANAGER" | "DEV_ADMIN"; username: string; passwordVersion: number; sid?: string; purpose?: "ACCESS" | "MFA_CHALLENGE"; exp: number };
-const tokenPayloadSchema = z.object({ sub: z.string().min(1), username: z.string().min(3).max(40), role: z.enum(["EMPLOYEE", "ADMIN", "MANAGER", "DEV_ADMIN"]), passwordVersion: z.number().int().nonnegative(), sid: z.string().min(1).optional(), purpose: z.enum(["ACCESS", "MFA_CHALLENGE"]).default("ACCESS"), exp: z.number().int().positive() });
+export type AppRole = "EMPLOYEE" | "ADMIN" | "MANAGER" | "GLOBAL_ADMIN" | "DEV_ADMIN";
+export type AuthTokenPayload = { sub: string; role: AppRole; username: string; passwordVersion: number; sid?: string; purpose?: "ACCESS" | "MFA_CHALLENGE"; exp: number };
+const tokenPayloadSchema = z.object({ sub: z.string().min(1), username: z.string().min(3).max(40), role: z.enum(["EMPLOYEE", "ADMIN", "MANAGER", "GLOBAL_ADMIN", "DEV_ADMIN"]), passwordVersion: z.number().int().nonnegative(), sid: z.string().min(1).optional(), purpose: z.enum(["ACCESS", "MFA_CHALLENGE"]).default("ACCESS"), exp: z.number().int().positive() });
 const encode = (value: object): string => Buffer.from(JSON.stringify(value)).toString("base64url");
 const signature = (input: string): string => createHmac("sha256", env.JWT_SECRET).update(input).digest("base64url");
 
@@ -14,11 +15,15 @@ export function createAccessToken(payload: Omit<AuthTokenPayload, "exp" | "passw
 }
 
 export function verifyAccessToken(token: string): AuthTokenPayload | null {
-  const [header, body, tokenSignature] = token.split(".");
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [header, body, tokenSignature] = parts;
   if (!header || !body || !tokenSignature) return null;
   const expected = signature(`${header}.${body}`);
   if (expected.length !== tokenSignature.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(tokenSignature))) return null;
   try {
+    const parsedHeader = z.object({ alg: z.literal("HS256"), typ: z.literal("JWT") }).strict().safeParse(JSON.parse(Buffer.from(header, "base64url").toString("utf8")));
+    if (!parsedHeader.success) return null;
     const parsed = tokenPayloadSchema.safeParse(JSON.parse(Buffer.from(body, "base64url").toString("utf8")));
     if (!parsed.success || parsed.data.exp <= Math.floor(Date.now() / 1000)) return null;
     return parsed.data;

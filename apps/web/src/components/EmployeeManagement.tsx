@@ -1,16 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createAdminEmployee, getAdminEmployees, updateAdminEmployeeStatus, type AdminEmployee, type EmployeeInput } from "../lib/admin-employees";
-import { getAdminAccounts, resetManagedAccountPassword, type AdminAccount } from "../lib/admin-accounts";
-import { getSession } from "../lib/auth";
+import { resetManagedAccountPassword } from "../lib/admin-accounts";
 import { useLanguage } from "../lib/language-context";
 
-const emptyForm: EmployeeInput = { username: "", password: "", firstName: "", lastName: "", ownerAdminId: "" };
+const emptyForm: EmployeeInput = { username: "", password: "", firstName: "", lastName: "" };
 
-export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdminId = "" }: { adminAccountsVersion?: number; preferredOwnerAdminId?: string }): JSX.Element {
+export function EmployeeManagement(): JSX.Element {
   const { t } = useLanguage();
-  const isDevAdmin = getSession()?.user.role === "DEV_ADMIN";
   const [employees, setEmployees] = useState<AdminEmployee[]>([]);
-  const [admins, setAdmins] = useState<AdminAccount[]>([]);
   const [form, setForm] = useState<EmployeeInput>({ ...emptyForm });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -19,22 +16,10 @@ export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdm
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAdminEmployees(), isDevAdmin ? getAdminAccounts() : Promise.resolve([])])
-      .then(([employeeList, adminList]) => {
-        const activeAdmins = adminList.filter((admin) => admin.isActive);
-        setEmployees(employeeList);
-        setAdmins(activeAdmins);
-        setForm((current) => ({
-          ...current,
-          ownerAdminId: activeAdmins.some((admin) => admin.id === preferredOwnerAdminId)
-            ? preferredOwnerAdminId
-            : activeAdmins.some((admin) => admin.id === current.ownerAdminId)
-            ? current.ownerAdminId
-            : activeAdmins[0]?.id ?? "",
-        }));
-      })
+    getAdminEmployees()
+      .then(setEmployees)
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t("unableToLoadEmployees")));
-  }, [adminAccountsVersion, isDevAdmin, preferredOwnerAdminId, t]);
+  }, [t]);
 
   function change(field: keyof EmployeeInput, value: string): void {
     setForm((current) => ({ ...current, [field]: value }));
@@ -48,7 +33,7 @@ export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdm
     try {
       const employee = await createAdminEmployee(form);
       setEmployees((current) => [...current, employee].sort((first, second) => Number(second.isActive) - Number(first.isActive) || first.username.localeCompare(second.username)));
-      setForm({ ...emptyForm, ownerAdminId: isDevAdmin ? form.ownerAdminId : "" });
+      setForm({ ...emptyForm });
       setMessage(t("employeeCreated"));
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : t("unableToCreateEmployee"));
@@ -109,14 +94,7 @@ export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdm
           <input required minLength={8} maxLength={128} type="password" autoComplete="new-password" value={form.password} onChange={(event) => change("password", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal" />
         </label>
         <p className="mt-2 text-xs leading-5 text-slate-500">{t("newPasswordRequirements")}</p>
-        {isDevAdmin && <label className="mt-3 block text-sm font-semibold text-slate-700">{t("administrator")}
-          <select required value={form.ownerAdminId} onChange={(event) => change("ownerAdminId", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal">
-            <option value="">{t("selectAdministrator")}</option>
-            {admins.map((admin) => <option key={admin.id} value={admin.id}>{admin.displayName ?? admin.username} (@{admin.username}){admin.clientName ? ` - ${admin.clientName}` : ""}</option>)}
-          </select>
-          {admins.length === 0 && <span className="mt-2 block text-xs font-normal text-rose-600">{t("noActiveAdministrators")}</span>}
-        </label>}
-        <button disabled={saving || (isDevAdmin && !form.ownerAdminId)} className="mt-5 h-11 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? t("creating") : t("createEmployee")}</button>
+        <button disabled={saving} className="mt-5 h-11 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? t("creating") : t("createEmployee")}</button>
       </form>
       <div className="grid gap-3">
         {employees.map((employee) => <article key={employee.id} className="rounded-2xl bg-white p-5 shadow-card">
@@ -127,7 +105,6 @@ export function EmployeeManagement({ adminAccountsVersion = 0, preferredOwnerAdm
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${employee.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{employee.isActive ? t("active") : t("inactive")}</span>
               </div>
               <p className="mt-1 truncate text-sm text-slate-500">@{employee.username}</p>
-              {isDevAdmin && <p className="mt-1 text-xs text-slate-400">{t("administrator")}: {employee.ownerAdmin ? `${employee.ownerAdmin.displayName ?? employee.ownerAdmin.username} (@${employee.ownerAdmin.username})` : t("unassigned")}</p>}
             </div>
             <div className="flex shrink-0 flex-col gap-2 text-right text-sm font-bold sm:flex-row">
               <button type="button" onClick={() => { setResetTarget(resetTarget === employee.id ? null : employee.id); setResetPassword(""); }} className="text-brand-600">{t("resetPassword")}</button>

@@ -4,11 +4,11 @@
 
 | Environment | Cloudflare Worker | Database | Purpose |
 | --- | --- | --- | --- |
-| Development | local Wrangler or Node process | local PostgreSQL | daily development |
-| Staging | `employee-attendance-staging` | Neon staging branch | migration rehearsal and acceptance testing |
-| Production | `employee-attendance` | Neon production branch | customer traffic |
+| Development | local Wrangler or Node process | local D1 or PostgreSQL | daily development |
+| Staging | `employee-attendance-staging` | Cloudflare D1 staging | migration rehearsal and acceptance testing |
+| Production | `employee-attendance` | Cloudflare D1 production | customer traffic |
 
-Runtime database traffic uses Cloudflare Hyperdrive. Migrations must use the direct, non-pooled Neon connection.
+Runtime database traffic uses the `DB` D1 binding. D1 migrations are applied with Wrangler before the Worker is deployed.
 
 ## Required GitHub Environments And Secrets
 
@@ -18,12 +18,10 @@ Add these secrets to the corresponding environment:
 
 - `CLOUDFLARE_API_TOKEN`: scoped to Workers Scripts and required bindings in the Floweaversolutions account.
 - `CLOUDFLARE_ACCOUNT_ID`: the Floweaversolutions Cloudflare account ID.
-- `NEON_STAGING_DIRECT_DATABASE_URL`: direct connection for the Neon staging branch.
-- `NEON_PRODUCTION_DIRECT_DATABASE_URL`: direct connection for the Neon production branch.
 
-Set `DATABASE_URL` and `JWT_SECRET` as Cloudflare Worker secrets separately for each Worker. Never store connection strings in the Wrangler file or repository.
+Set `JWT_SECRET` as a Cloudflare Worker secret separately for each Worker. D1 database IDs are non-secret resource identifiers in the Wrangler file.
 
-Also configure `MFA_ENCRYPTION_KEY`. Configure `RESEND_API_KEY`, `EMAIL_FROM`, and `SENTRY_DSN` only after those external services have been created. R2 must be enabled before deploying a configuration that binds `PAYROLL_EXPORTS`.
+Also configure `MFA_ENCRYPTION_KEY`. If `WEBHOOK_URL` is set, configure a separate random `WEBHOOK_SECRET` of at least 32 characters; webhook delivery fails closed when the secret is missing or too short. Configure `RESEND_API_KEY`, `EMAIL_FROM`, and `SENTRY_DSN` only after those external services have been created. R2 must be enabled before deploying a configuration that binds `PAYROLL_EXPORTS`.
 
 ## Release Process
 
@@ -36,7 +34,7 @@ Also configure `MFA_ENCRYPTION_KEY`. Configure `RESEND_API_KEY`, `EMAIL_FROM`, a
 7. Confirm the production readiness endpoint, login, clock-in eligibility, and administrator attendance view.
 8. Monitor error rate, latency, database connections, and authentication failures for at least 30 minutes.
 
-Do not deploy production while the staging Neon branch or staging Hyperdrive is missing. When R2 is unavailable, omit the `PAYROLL_EXPORTS` binding and keep both `FEATURE_PAYROLL=false` and `VITE_FEATURE_PAYROLL=false`; do not activate payroll routes, navigation, queue processing, or exports until both private buckets exist. A successful Wrangler dry run validates the bundle shape but does not prove that referenced resources exist.
+Do not deploy production until staging D1 migrations, readiness, login, tenant isolation, and representative write paths pass. When R2 is unavailable, omit the `PAYROLL_EXPORTS` binding; direct payroll downloads remain available, while asynchronous private-file exports remain unavailable. A successful Wrangler dry run validates the bundle shape but does not prove that referenced resources exist.
 
 ## Migration Rules
 
@@ -47,7 +45,7 @@ All production schema changes use expand-contract deployment:
 3. **Switch:** deploy code that reads the new structure while temporarily dual-writing both structures.
 4. **Contract:** remove legacy fields only in a later release after monitoring and a confirmed rollback window.
 
-Every migration must be rehearsed on a Neon branch copied from production. Review the generated SQL for table rewrites, long locks, destructive statements, and required backfills before approval.
+Every migration must be rehearsed on staging D1 and included in an isolated D1 restore drill before production approval. Review the SQL for table rewrites, long locks, destructive statements, and required backfills.
 
 ## Application Rollback
 
@@ -56,6 +54,6 @@ Every migration must be rehearsed on a Neon branch copied from production. Revie
 3. Do not automatically reverse a successful database migration. Expand migrations must remain compatible with the prior application version.
 4. If data was written incorrectly, disable the affected feature flag and follow the database recovery procedure.
 
-## Vercel Retirement
+## Deployment Rollback
 
-Keep the Vercel deployment as a rollback target until the custom Cloudflare domain has served seven consecutive days without a critical incident. Then remove Vercel environment secrets, disable its production deployment, and archive `vercel.json` in a separate cleanup change.
+Vercel was retired on 2026-10-25. Roll back application releases through Cloudflare Worker deployment history using the last verified Worker version; do not reintroduce the retired Vercel origin or credentials.

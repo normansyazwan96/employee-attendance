@@ -2,7 +2,7 @@ import { authenticatedFetch } from "./auth";
 
 export type EmployeeOwnerAdmin = { id: string; username: string; displayName: string | null };
 export type AdminEmployee = { id: string; employeeId: string | null; username: string; firstName: string; lastName: string; isActive: boolean; clientId: string | null; ownerAdmin: EmployeeOwnerAdmin | null };
-export type EmployeeInput = { username: string; password: string; firstName: string; lastName: string; ownerAdminId?: string };
+export type EmployeeInput = { username: string; password: string; firstName: string; lastName: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await authenticatedFetch(`/api/v1${path}`, { ...options, headers: { "Content-Type": "application/json", ...options?.headers } });

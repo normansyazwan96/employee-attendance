@@ -30,8 +30,16 @@
     ]
   },
   "r2_buckets": [],
-  "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "523c3edad3a547d7a81ab9bb13b09a40" }
+  "d1_databases": [
+    { "binding": "DB", "database_name": "employee-attendance-production", "database_id": "e5b9d26c-87ca-4e57-826e-00c6def00dea", "migrations_dir": "./d1/migrations" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "DATABASE_WRITE_COORDINATOR", "class_name": "DatabaseWriteCoordinator" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DatabaseWriteCoordinator"] }
   ],
   "ratelimits": [
     { "name": "AUTH_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
@@ -39,13 +47,14 @@
   "vars": {
     "APP_ENV": "production",
     "CLIENT_ORIGIN": "https://employee-attendance.floweaversolutions.workers.dev",
-    "CLIENT_ORIGINS": "https://employee-attendance.floweaversolutions.workers.dev,https://employee-attendance-api-ruby.vercel.app",
+    "CLIENT_ORIGINS": "https://employee-attendance.floweaversolutions.workers.dev",
     "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
     "APP_BASE_URL": "https://employee-attendance.floweaversolutions.workers.dev",
     "WEBHOOK_URL": "",
+    "DATABASE_BACKEND": "d1",
     "FEATURE_ATTENDANCE_V2": "true",
     "FEATURE_WORKFORCE_V2": "true",
-    "FEATURE_PAYROLL": "false"
+    "FEATURE_PAYROLL": "true"
   },
   "env": {
     "staging": {
@@ -73,9 +82,15 @@
         ]
       },
       "r2_buckets": [],
-      "hyperdrive": [
-        { "binding": "HYPERDRIVE", "id": "048d10cd46674a54aff23b909056cbfb" }
+      "d1_databases": [
+        { "binding": "DB", "database_name": "employee-attendance-staging", "database_id": "3e4a5f18-53e1-4033-8403-dbe05adcda5c", "migrations_dir": "./d1/migrations" },
+        { "binding": "D1_SHADOW", "database_name": "employee-attendance-staging", "database_id": "3e4a5f18-53e1-4033-8403-dbe05adcda5c", "migrations_dir": "./d1/migrations" }
       ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "DATABASE_WRITE_COORDINATOR", "class_name": "DatabaseWriteCoordinator" }
+        ]
+      },
       "ratelimits": [
         { "name": "AUTH_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
       ],
@@ -86,9 +101,11 @@
         "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
         "APP_BASE_URL": "https://employee-attendance-staging.floweaversolutions.workers.dev",
         "WEBHOOK_URL": "",
+        "DATABASE_BACKEND": "d1",
+        "D1_READ_MODE": "off",
         "FEATURE_ATTENDANCE_V2": "true",
         "FEATURE_WORKFORCE_V2": "true",
-        "FEATURE_PAYROLL": "false"
+        "FEATURE_PAYROLL": "true"
       }
     }
   }

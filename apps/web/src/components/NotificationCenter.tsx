@@ -3,7 +3,7 @@ import { getNotifications, markNotificationRead, type Notification } from "../li
 import { useLanguage } from "../lib/language-context";
 import { Icon } from "./icons";
 
-export function NotificationCenter(): JSX.Element {
+export function NotificationCenter({ inverse = false }: { inverse?: boolean }): JSX.Element {
   const { language, locale } = useLanguage();
   const ms = language === "ms";
   const [items, setItems] = useState<Notification[]>([]);
@@ -35,7 +35,7 @@ export function NotificationCenter(): JSX.Element {
   }
 
   return <div ref={panel} className="relative">
-    <button type="button" onClick={() => { setOpen((current) => !current); if (!open) void load(); }} className="relative grid h-10 w-10 place-items-center rounded-lg text-slate-600 hover:bg-white/70" aria-label={ms ? "Notifikasi" : "Notifications"} aria-expanded={open}>
+    <button type="button" onClick={() => { setOpen((current) => !current); if (!open) void load(); }} className={`relative grid h-10 w-10 place-items-center rounded-lg ${inverse ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-slate-600 hover:bg-slate-100"}`} aria-label={ms ? "Notifikasi" : "Notifications"} aria-expanded={open}>
       <Icon name="bell" className="h-5 w-5" />
       {unread > 0 && <span className="absolute right-1 top-1 min-w-4 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-4 text-white">{Math.min(unread, 99)}</span>}
     </button>

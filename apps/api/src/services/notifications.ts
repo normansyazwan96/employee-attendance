@@ -17,9 +17,11 @@ export async function notifyUsers(input: NotificationInput): Promise<void> {
 }
 
 export async function approvalRecipientIds(employeeUserId: string, clientId: string): Promise<string[]> {
-  const membership = await prisma.organizationMembership.findUnique({ where: { userId_clientId: { userId: employeeUserId, clientId } }, include: { manager: { select: { userId: true } }, user: { select: { createdByUserId: true } } } });
-  if (membership?.manager?.userId) return [membership.manager.userId];
-  if (membership?.user.createdByUserId) return [membership.user.createdByUserId];
+  const membership = await prisma.organizationMembership.findUnique({
+    where: { userId_clientId: { userId: employeeUserId, clientId } },
+    include: { manager: { select: { userId: true, status: true, user: { select: { isActive: true } } } } },
+  });
+  if (membership?.manager?.status === "ACTIVE" && membership.manager.user.isActive) return [membership.manager.userId];
   const admins = await prisma.organizationMembership.findMany({ where: { clientId, role: "ADMIN", status: "ACTIVE" }, select: { userId: true } });
   return admins.map((admin) => admin.userId);
 }

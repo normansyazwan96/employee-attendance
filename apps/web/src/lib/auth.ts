@@ -1,12 +1,12 @@
 import { apiUrl, withLanguage } from "./api";
 
-export type Role = "EMPLOYEE" | "ADMIN" | "MANAGER" | "DEV_ADMIN";
+export type Role = "EMPLOYEE" | "ADMIN" | "MANAGER" | "GLOBAL_ADMIN" | "DEV_ADMIN";
 export type MembershipRole = "ADMIN" | "MANAGER" | "EMPLOYEE";
 export type SessionUser = {
   id: string;
   username: string;
   role: Role;
-  platformRole?: "USER" | "DEV_ADMIN";
+  platformRole?: "USER" | "GLOBAL_ADMIN" | "DEV_ADMIN";
   name: string | null;
   mustChangePassword: boolean;
   memberships?: Array<{ id: string; clientId: string; role: MembershipRole; status: "ACTIVE" | "INACTIVE" }>;
@@ -66,7 +66,7 @@ export function setSelectedOrganizationId(clientId: string): void {
   if (clientId) localStorage.setItem(organizationStorageKey, clientId);
   else localStorage.removeItem(organizationStorageKey);
 }
-export function rolePath(role: Role): string { return role === "DEV_ADMIN" ? "/dev" : role === "ADMIN" ? "/admin" : role === "MANAGER" ? "/manager" : "/employee"; }
+export function rolePath(role: Role): string { return role === "DEV_ADMIN" ? "/dev" : role === "GLOBAL_ADMIN" ? "/global" : role === "ADMIN" ? "/admin" : role === "MANAGER" ? "/manager" : "/employee"; }
 export function sessionPath(user: SessionUser): string { return user.mustChangePassword ? "/profile" : rolePath(user.role); }
 export function updateSession(token: string, user: SessionUser): void { saveSession({ token, user }); }
 
@@ -76,7 +76,7 @@ async function refreshAccessToken(): Promise<string> {
       const response = await fetch(`${apiUrl}/api/v2/auth/refresh`, { method: "POST", credentials: "include", headers: withLanguage() });
       const body = await response.json() as SessionResponse | ApiError;
       if (!response.ok || !("accessToken" in body)) {
-        clearSession();
+        if (response.status === 401) clearSession();
         throw new Error(errorMessage(body as ApiError, "Your session has expired. Please sign in again."));
       }
       saveSession({ token: body.accessToken, user: body.user });

@@ -1,7 +1,7 @@
 import { authenticatedFetch } from "./auth";
 
-export type Worksite = { id: string; name: string; latitude: number; longitude: number; radiusMeters: number; isActive: boolean; createdAt: string; updatedAt: string };
-export type WorksiteInput = Pick<Worksite, "name" | "latitude" | "longitude" | "radiusMeters" | "isActive">;
+export type Worksite = { id: string; name: string; stateCode: string; latitude: number; longitude: number; radiusMeters: number; isActive: boolean; ownerAdminId: string | null; canManage: boolean; createdAt: string; updatedAt: string };
+export type WorksiteInput = Pick<Worksite, "name" | "stateCode" | "latitude" | "longitude" | "radiusMeters" | "isActive">;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await authenticatedFetch(`/api/v1${path}`, { ...options, headers: { "Content-Type": "application/json", ...options?.headers } });

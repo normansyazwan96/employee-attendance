@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { env } from "../config/env.js";
 import { prisma } from "../services/prisma.js";
+import { collectDatabaseControlTotals, recoveryChecksPass } from "../services/database-recovery.js";
 
 export function getWebhookDetails(_request: Request, response: Response): void {
   response.json({
@@ -22,4 +23,13 @@ export function getWebhookDetails(_request: Request, response: Response): void {
 export async function getWebhookDeliveries(_request: Request, response: Response): Promise<void> {
   const data = await prisma.webhookDelivery.findMany({ select: { id: true, clientId: true, attendanceEventId: true, eventType: true, status: true, attempts: true, lastAttemptAt: true, responseStatus: true, lastError: true, deliveredAt: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 100 });
   response.json({ data });
+}
+
+export async function getDatabaseRecoveryStatus(_request: Request, response: Response): Promise<void> {
+  const [totals, latestCheck, latestDrill] = await Promise.all([
+    collectDatabaseControlTotals(),
+    prisma.auditLog.findFirst({ where: { action: { in: ["D1_RECOVERY_CHECK_PASSED", "D1_RECOVERY_CHECK_FAILED"] } }, select: { action: true, details: true, createdAt: true }, orderBy: { createdAt: "desc" } }),
+    prisma.auditLog.findFirst({ where: { action: "D1_RECOVERY_DRILL_PASSED" }, select: { details: true, createdAt: true }, orderBy: { createdAt: "desc" } }),
+  ]);
+  response.json({ recovery: { healthy: recoveryChecksPass(totals), totals, latestCheck, latestDrill } });
 }

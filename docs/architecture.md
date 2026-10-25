@@ -4,7 +4,7 @@
 
 The product is a modular monolith deployed as one Cloudflare Worker. Express serves `/api/v1` compatibility routes and `/api/v2` domain routes; Cloudflare Assets serves the React PWA. Cloudflare Queues run webhook and payroll export jobs, while a scheduled handler retries pending work, expires exports, removes old exact GPS coordinates, and detects attendance exceptions.
 
-Production PostgreSQL remains on Neon. Worker traffic uses Cloudflare Hyperdrive with a fresh request-scoped Prisma client inside each Worker handler; migrations and restore operations use the direct Neon endpoint. Staging must use a Neon branch copied from production.
+Production and staging use Cloudflare D1 through Prisma's D1 adapter. A Durable Object serializes mutating requests, and D1 constraints, idempotency keys, and immutable-history triggers protect application invariants. Neon is disconnected from the Workers and retained temporarily as a rollback source.
 
 ## Trust Boundaries
 
@@ -17,7 +17,7 @@ Production PostgreSQL remains on Neon. Worker traffic uses Cloudflare Hyperdrive
 
 ## Attendance
 
-`AttendanceEvent` is immutable source data. `TimesheetDay` is a recalculated daily aggregate. Clock requests require online GPS and an idempotency key, use server time, and run under a per-employee PostgreSQL advisory lock. The legacy `AttendanceRecord` remains dual-written for `/api/v1` compatibility.
+`AttendanceEvent` is immutable source data. `TimesheetDay` is a recalculated daily aggregate. Clock requests require online GPS and an idempotency key, use server time, and are serialized through the database write coordinator. The legacy `AttendanceRecord` remains dual-written for `/api/v1` compatibility.
 
 ## Payroll
 

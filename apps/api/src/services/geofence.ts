@@ -14,7 +14,12 @@ function distanceMeters(from: Location, to: { latitude: number; longitude: numbe
 
 export async function validateLocation(clientId: string | null, location: Location): Promise<LocationValidation> {
   if (!clientId) return { valid: false, reason: "Your account is not assigned to a client" };
-  const worksites = await prisma.worksite.findMany({ where: { clientId, isActive: true } });
+  const worksites = await prisma.worksite.findMany({
+    where: {
+      clientId,
+      isActive: true,
+    },
+  });
   if (worksites.length === 0) return { valid: false, reason: "No active worksite has been configured" };
   const nearest = worksites.map((worksite) => ({ worksite, distanceMeters: distanceMeters(location, worksite) })).sort((first, second) => first.distanceMeters - second.distanceMeters)[0];
   if (!nearest) return { valid: false, reason: "No active worksite has been configured" };

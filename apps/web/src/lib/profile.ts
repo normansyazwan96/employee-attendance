@@ -1,6 +1,6 @@
 import { authenticatedFetch } from "./auth";
 
-export type Profile = { id: string; username: string; email: string | null; role: "EMPLOYEE" | "ADMIN" | "MANAGER" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string; mustChangePassword: boolean; mfaEnabled: boolean };
+export type Profile = { id: string; username: string; email: string | null; role: "EMPLOYEE" | "ADMIN" | "MANAGER" | "GLOBAL_ADMIN" | "DEV_ADMIN"; displayName: string | null; firstName: string; lastName: string; mustChangePassword: boolean; mfaEnabled: boolean };
 export type ProfileInput = { username: string; email: string | null; displayName: string | null; firstName?: string; lastName?: string; currentPassword?: string; newPassword?: string };
 export type ProfileUpdate = { profile: Profile; token: string };
 

@@ -1,6 +1,6 @@
 # Employee Attendance
 
-A mobile-first, multi-company attendance system for Malaysian SMEs. It includes GPS clocking and breaks, effective-dated schedules, timesheets and exceptions, leave and correction approvals, manager scopes, secure sessions and administrator 2FA, immutable audit history, queued webhooks, and English/Bahasa Malaysia interfaces. Payroll-ready CSV/XLSX export support is implemented but remains disabled until private R2 storage is enabled.
+A mobile-first, multi-company attendance system for Malaysian SMEs. It includes GPS clocking and breaks, effective-dated schedules, timesheets and exceptions, leave and correction approvals, manager scopes, secure sessions and administrator 2FA, immutable audit history, queued webhooks, and English/Bahasa Malaysia interfaces. Direct payroll CSV/XLSX exports are available; asynchronous stored exports require private R2 storage.
 
 ## Architecture
 
@@ -21,14 +21,14 @@ employee-attendance/
 
 - React, TypeScript, Vite, Tailwind CSS, React Router
 - Node.js, Express, Zod
-- Neon PostgreSQL, Prisma ORM, Cloudflare Hyperdrive
-- Cloudflare Workers, Queues, R2, scheduled jobs, and rate limiting
+- Cloudflare D1, Prisma ORM, and Durable Objects
+- Cloudflare Workers, Queues, optional R2, scheduled jobs, and rate limiting
 - Vitest, Playwright, ESLint
 
 ## Prerequisites
 
 - Node.js 20 or newer (includes npm)
-- A PostgreSQL database, either local or a Neon development branch
+- Wrangler for local D1 development, or PostgreSQL for the legacy local development path
 
 ## Installation
 
@@ -38,7 +38,7 @@ copy .env.example .env
 npm install
 ```
 
-On macOS/Linux use `cp .env.example .env` instead. Update `DATABASE_URL` only if you change the local PostgreSQL defaults.
+On macOS/Linux use `cp .env.example .env` instead. Replace `POSTGRES_PASSWORD` with a unique local password and put the same value in `DATABASE_URL` before starting PostgreSQL.
 
 ## Database
 
@@ -50,9 +50,11 @@ npm run db:generate
 npm run db:migrate -- --name init-auth
 ```
 
+The development database port is bound to `127.0.0.1` so it is not exposed to other devices on the network. Existing Docker volumes keep the password used when they were first initialized; changing `.env` alone does not rotate that database user's password.
+
 To create the three local seed accounts, set unique `SEED_DEV_ADMIN_PASSWORD`, `SEED_ADMIN_PASSWORD`, and `SEED_EMPLOYEE_PASSWORD` values in `.env`, then run `npm run db:seed`. Each password must be at least 8 characters and include uppercase, lowercase, number, and symbol characters. Seeded accounts require a password change by default; only isolated automation may set `SEED_MUST_CHANGE_PASSWORD=false`.
 
-The schema preserves the legacy `/api/v1` records while `/api/v2` adds organization memberships, rotating sessions, attendance events, timesheet aggregates, workforce policies, leave, corrections, notifications, pay periods, immutable adjustments, and export jobs. Migrations follow expand-contract rules and must be rehearsed on a Neon branch before production.
+The schema preserves the legacy `/api/v1` records while `/api/v2` adds organization memberships, rotating sessions, attendance events, timesheet aggregates, workforce policies, leave, corrections, notifications, pay periods, immutable adjustments, export jobs, and a platform-wide Malaysian holiday catalogue. Production and staging schema changes use Wrangler D1 migrations and must be rehearsed on staging before production.
 
 ## Local development accounts
 
@@ -68,7 +70,7 @@ Change `JWT_SECRET` in `.env` to a unique random value of at least 32 characters
 
 Employees clock in, clock out, start breaks, and end breaks using online mobile-browser GPS. Every action requires an idempotency key, uses server time, captures the accepted worksite snapshot, and is protected against concurrent submissions. Network failures keep the pending action key for a safe retry; offline or backdated punches are never accepted. Exact GPS is purged according to the organization policy, which defaults to 90 days.
 
-The seeded Acme Local HQ worksite is at `2.9084686453776176, 101.60997566744295` with a 150 m radius. Admins can create, edit, activate, deactivate, and delete worksites from the admin dashboard, create or deactivate employees without deleting their records, and assign schedules from the same dashboard. Attendance dates use `ATTENDANCE_TIMEZONE` from `.env` and default to `UTC`.
+The seeded Acme Local HQ worksite is at `2.9084686453776176, 101.60997566744295` with a 150 m radius. Every worksite has a required Malaysian state code that selects its public-holiday calendar. DEV_ADMIN imports every state and federal territory for a selected year in one action; the scheduled Worker sends a deduplicated reminder during the final seven days of December if the next year is missing. Admins can create, edit, activate, deactivate, and delete worksites from the admin dashboard, create or deactivate employees without deleting their records, and assign schedules from the same dashboard. Attendance dates use `ATTENDANCE_TIMEZONE` from `.env` and default to `UTC`.
 
 The API uses 15-minute access tokens in memory and rotating refresh tokens in Secure, HttpOnly, SameSite cookies. It supports revocation, active sessions, password recovery, administrator and manager TOTP 2FA, account lockout, and Cloudflare rate limiting. Tenant access is resolved through active memberships and shared authorization helpers.
 

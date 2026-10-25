@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "employee-attendance-d1-tools",
+  "account_id": "af6c946544dc6f08552b6114be18a13f",
+  "compatibility_date": "2026-10-19",
+  "main": "./cloudflare/worker.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "employee-attendance-development",
+      "database_id": "5d02c83b-11d9-4440-b178-97cb79c59741",
+      "migrations_dir": "./d1/migrations"
+    }
+  ],
+  "env": {
+    "production": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "employee-attendance-production",
+          "database_id": "e5b9d26c-87ca-4e57-826e-00c6def00dea",
+          "migrations_dir": "./d1/migrations"
+        }
+      ]
+    },
+    "staging": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "employee-attendance-staging",
+          "database_id": "3e4a5f18-53e1-4033-8403-dbe05adcda5c",
+          "migrations_dir": "./d1/migrations"
+        }
+      ]
+    }
+  }
+}
