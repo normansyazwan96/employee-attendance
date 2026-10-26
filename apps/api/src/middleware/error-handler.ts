@@ -1,7 +1,6 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import { logger } from "../services/logger.js";
-import { reportError } from "../services/error-reporting.js";
 
 const requestIdPattern = /^[A-Za-z0-9._-]{8,128}$/;
 
@@ -45,8 +44,6 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, _nex
     errorName: error instanceof Error ? error.name : "UnknownError",
     message,
   });
-  void reportError(error, { requestId: response.locals.requestId, method: request.method, path: request.originalUrl });
-
   if (request.originalUrl.startsWith("/api/v2/")) {
     response.status(500).json({
       error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },

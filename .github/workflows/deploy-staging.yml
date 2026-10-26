@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     env:
-      DATABASE_URL: ${{ secrets.NEON_STAGING_DIRECT_DATABASE_URL }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
@@ -38,11 +37,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply staging migrations
-        run: npm run db:deploy
+      - name: Apply staging D1 migrations
+        run: npm run d1:migrate:staging
 
-      - name: Verify staging tenant isolation
-        run: npm run test:integration --workspace=@attendance/api
+      - name: Validate staging D1
+        run: npm run d1:validate:staging
 
       - name: Deploy staging Worker
         run: npm run deploy:staging

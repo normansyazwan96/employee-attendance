@@ -14,7 +14,7 @@
 - Run employee clock, break, retry, leave, correction, manager approval, payroll lock, CSV, and XLSX journeys.
 - Run tenant-isolation integration tests and verify no organization can read or modify another.
 - Run `powershell -ExecutionPolicy Bypass -File scripts/load/run-staging-rehearsal.ps1` with 100 isolated staging users. The wrapper temporarily rotates the staging JWT secret, always installs a fresh final secret, and removes test data. Release threshold: zero failed actions and p95 below 2.5 seconds.
-- Review Cloudflare request logs, D1 metrics, queue retries, dead-letter queues, and Sentry.
+- Review Cloudflare request logs, D1 metrics, queue retries, and dead-letter queues.
 
 ## Production
 
@@ -33,11 +33,12 @@
 - Database rollback: use the pre-release D1 Time Travel bookmark recorded in the release evidence. Neon `main` remains unchanged and disconnected from the Workers during the temporary cutover-retention window.
 - Application rollback: use Cloudflare Worker deployment history. The former Vercel deployment and origin were retired on 2026-10-25.
 - Cloudflare R2: intentionally deferred to stay on the free tier. Direct payroll downloads remain available; asynchronous stored exports remain unavailable.
-- The D1-native rehearsal completed 100 of 100 clock-ins with no failures, but p95 was 4.382 seconds against the 2.5-second release threshold. Production promotion remains blocked until this gate passes or the operations owner explicitly approves a documented threshold change.
-- The staging rehearsal cleanup returns D1 to 2 organizations, 8 users, 4 employees, 599 attendance events, and 159 timesheets with no tagged rehearsal accounts.
+- The optimized D1-native rehearsal completed 100 of 100 clock-ins with no failures and improved p95 from 4.382 seconds to 3.181 seconds. This remains above the 2.5-second release threshold, so production promotion stays blocked until the gate passes or the operations owner explicitly approves a documented threshold change.
+- The staging rehearsal cleanup returns D1 to 2 organizations, 8 users, 4 employees, 599 attendance events, and zero tagged rehearsal accounts. Scheduled attendance processing has created 163 current timesheets.
 - Organization Settings includes a bilingual setup checklist and Test/Live organization label.
 - Custom domain: requires the chosen domain name and DNS zone.
 - Resend: requires a verified sender and `RESEND_API_KEY`.
-- Sentry: requires a project `SENTRY_DSN`.
+- Error monitoring: Cloudflare structured Worker logs and request IDs are the supported monitoring path; Sentry is intentionally not used.
 - GitHub readiness monitor: workflow is included and becomes active after the changes reach the default branch; configure repository Actions failure notifications for the operations owner.
+- Cloudflare observability: persistent structured Worker and invocation logs are enabled at full sampling for staging and production configuration.
 - Dependency audit: the only current high advisory is confined to the trusted Prisma build CLI and is documented in `docs/security/dependency-exceptions.md`; it is not part of the Worker runtime bundle.

@@ -21,7 +21,9 @@ Add these secrets to the corresponding environment:
 
 Set `JWT_SECRET` as a Cloudflare Worker secret separately for each Worker. D1 database IDs are non-secret resource identifiers in the Wrangler file.
 
-Also configure `MFA_ENCRYPTION_KEY`. If `WEBHOOK_URL` is set, configure a separate random `WEBHOOK_SECRET` of at least 32 characters; webhook delivery fails closed when the secret is missing or too short. Configure `RESEND_API_KEY`, `EMAIL_FROM`, and `SENTRY_DSN` only after those external services have been created. R2 must be enabled before deploying a configuration that binds `PAYROLL_EXPORTS`.
+Also configure `MFA_ENCRYPTION_KEY`. If `WEBHOOK_URL` is set, configure a separate random `WEBHOOK_SECRET` of at least 32 characters; webhook delivery fails closed when the secret is missing or too short. Configure `RESEND_API_KEY` and `EMAIL_FROM` only after the email service and verified sender have been created. R2 must be enabled before deploying a configuration that binds `PAYROLL_EXPORTS`.
+
+Application errors are written as structured Cloudflare Worker logs with a request ID. Keep Workers Logs enabled and use the request ID returned by an error response to find the matching log entry. This deployment intentionally does not use Sentry.
 
 ## Release Process
 
@@ -56,4 +58,4 @@ Every migration must be rehearsed on staging D1 and included in an isolated D1 r
 
 ## Deployment Rollback
 
-Vercel was retired on 2026-10-25. Roll back application releases through Cloudflare Worker deployment history using the last verified Worker version; do not reintroduce the retired Vercel origin or credentials.
+Vercel was retired on 2026-10-25 and its deployment configuration has been removed. Roll back application releases through Cloudflare Worker deployment history using the last verified Worker version; do not reintroduce the retired Vercel origin or credentials.

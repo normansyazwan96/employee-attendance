@@ -8,6 +8,15 @@
   "workers_dev": true,
   "preview_urls": false,
   "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "assets": {
     "directory": "./apps/web/dist",
     "binding": "ASSETS",
@@ -60,6 +69,15 @@
     "staging": {
       "workers_dev": true,
       "preview_urls": false,
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true,
+          "persist": true
+        }
+      },
       "assets": {
         "directory": "./apps/web/dist",
         "binding": "ASSETS",

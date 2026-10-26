@@ -2,8 +2,8 @@ import { AttendanceEventType, AttendanceStatus, Prisma, RequestStatus, Timesheet
 import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { acquireDatabaseLock, executeD1Batch, isD1Database, prisma } from "../services/prisma.js";
-import { validateLocation, type Location } from "../services/geofence.js";
+import { acquireDatabaseLock, executeD1Batch, isD1Database, prisma, queryD1Batch } from "../services/prisma.js";
+import { validateLocation, validateWorksiteLocations, type Location, type LocationValidation } from "../services/geofence.js";
 import { calculateTimesheet } from "../services/timesheet-calculator.js";
 import { attendanceDate } from "../utils/attendance-date.js";
 import { env } from "../config/env.js";
@@ -67,11 +67,75 @@ type D1AttendanceActionInput = {
   userAgent: string | null;
 };
 
+type AttendancePreflight = {
+  employee: ({ id: string; firstName: string; lastName: string; employmentStatus: string; user: { clientId: string | null } } | null);
+  pendingValues?: { requestKind?: string; action?: string };
+  policy: { overtimeThreshold: number; roundingIncrement: number; maximumShiftMinutes: number; maximumGpsAccuracy: number } | null;
+  locationValidation: LocationValidation;
+};
+
+function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== "string") return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadD1AttendancePreflight(userId: string, location: Location): Promise<AttendancePreflight> {
+  const [employeeRows = [], correctionRows = [], worksiteRows = []] = await queryD1Batch([
+    {
+      sql: `SELECT e."id", e."firstName", e."lastName", e."employmentStatus", u."clientId", p."overtimeThreshold", p."roundingIncrement", p."maximumShiftMinutes", p."maximumGpsAccuracy" FROM "Employee" e INNER JOIN "User" u ON u."id" = e."userId" LEFT JOIN "WorkPolicy" p ON p."clientId" = u."clientId" WHERE e."userId" = ? LIMIT 1`,
+      values: [userId],
+    },
+    {
+      sql: `SELECT c."requestedValues" FROM "AttendanceCorrection" c INNER JOIN "Employee" e ON e."id" = c."employeeId" WHERE e."userId" = ? AND c."status" = 'PENDING' ORDER BY c."createdAt" DESC LIMIT 1`,
+      values: [userId],
+    },
+    {
+      sql: `SELECT w."id", w."name", w."latitude", w."longitude", w."radiusMeters" FROM "Worksite" w WHERE w."clientId" = (SELECT u."clientId" FROM "User" u WHERE u."id" = ? LIMIT 1) AND w."isActive" = 1`,
+      values: [userId],
+    },
+  ]);
+  const row = employeeRows[0];
+  const employee = row ? {
+    id: String(row.id),
+    firstName: String(row.firstName),
+    lastName: String(row.lastName),
+    employmentStatus: String(row.employmentStatus),
+    user: { clientId: row.clientId == null ? null : String(row.clientId) },
+  } : null;
+  const policy = row?.overtimeThreshold == null ? null : {
+    overtimeThreshold: Number(row.overtimeThreshold),
+    roundingIncrement: Number(row.roundingIncrement),
+    maximumShiftMinutes: Number(row.maximumShiftMinutes),
+    maximumGpsAccuracy: Number(row.maximumGpsAccuracy),
+  };
+  const pending = parseJsonObject(correctionRows[0]?.requestedValues);
+  return {
+    employee,
+    pendingValues: pending as AttendancePreflight["pendingValues"],
+    policy,
+    locationValidation: validateWorksiteLocations(worksiteRows.map((worksite) => ({
+      id: String(worksite.id),
+      name: String(worksite.name),
+      latitude: Number(worksite.latitude),
+      longitude: Number(worksite.longitude),
+      radiusMeters: Number(worksite.radiusMeters),
+    })), location),
+  };
+}
+
 async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
   const { employee, clientId, requestedType, input, acceptedWorksite, policy, actorUserId, requestId, ipAddress, userAgent } = args;
-  const duplicate = await prisma.attendanceEvent.findUnique({
-    where: { employeeId_idempotencyKey: { employeeId: employee.id, idempotencyKey: input.idempotencyKey } },
-  });
+  const [duplicate, latest] = await Promise.all([
+    prisma.attendanceEvent.findUnique({
+      where: { employeeId_idempotencyKey: { employeeId: employee.id, idempotencyKey: input.idempotencyKey } },
+    }),
+    prisma.attendanceEvent.findFirst({ where: { employeeId: employee.id }, orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }] }),
+  ]);
   if (duplicate) {
     const [timesheet, attendance] = await Promise.all([
       prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate: duplicate.workDate } } }),
@@ -80,18 +144,17 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
     return { event: duplicate, timesheet, attendance, replayed: true, webhookDeliveryId: null };
   }
 
-  const latest = await prisma.attendanceEvent.findFirst({ where: { employeeId: employee.id }, orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }] });
   if (!transitionAllowed(latest?.type, requestedType)) throw new AttendanceActionError(409, "INVALID_ATTENDANCE_TRANSITION", transitionMessages[requestedType]);
 
   const now = new Date();
   const workDate = requestedType === AttendanceEventType.CLOCK_IN ? attendanceDate(now) : latest!.workDate;
-  const [lockedTimesheet, attendance, events, assignment] = await Promise.all([
-    prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } }, select: { state: true } }),
+  const [existingTimesheet, attendance, events, assignment] = await Promise.all([
+    prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
     prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
     prisma.attendanceEvent.findMany({ where: { employeeId: employee.id, workDate }, orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }] }),
     prisma.scheduleAssignment.findFirst({ where: { employeeId: employee.id, effectiveFrom: { lte: workDate }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: workDate } }] }, include: { shiftTemplate: true }, orderBy: { effectiveFrom: "desc" } }),
   ]);
-  if (lockedTimesheet?.state === TimesheetState.LOCKED) throw new AttendanceActionError(409, "TIMESHEET_LOCKED", "This timesheet is locked and cannot accept new events");
+  if (existingTimesheet?.state === TimesheetState.LOCKED) throw new AttendanceActionError(409, "TIMESHEET_LOCKED", "This timesheet is locked and cannot accept new events");
 
   const calculation = calculateTimesheet([...events, { type: requestedType, occurredAt: now }], {
     regularDayMinutes: policy?.overtimeThreshold ?? 480,
@@ -101,6 +164,8 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
   const scheduleMetrics = calculateScheduleMetrics(workDate, calculation.firstClockInAt, calculation.lastClockOutAt, assignment?.shiftTemplate ?? null);
   const scheduleExceptions = applyScheduleExceptions(calculation, scheduleMetrics);
   const eventId = randomUUID();
+  const attendanceId = attendance?.id ?? randomUUID();
+  const timesheetId = existingTimesheet?.id ?? randomUUID();
   const webhookDeliveryId = env.WEBHOOK_URL ? randomUUID() : null;
   const nowMs = now.getTime();
   const operations: Array<{ sql: string; values: unknown[] }> = [{
@@ -114,7 +179,7 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
       values: [nowMs, attendance.id],
     } : {
       sql: `INSERT INTO "AttendanceRecord" ("id", "employeeId", "workDate", "clockInAt", "clockInLatitude", "clockInLongitude", "clockInAccuracy", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, 'CLOCKED_IN', ?, ?)`,
-      values: [randomUUID(), employee.id, workDate, nowMs, input.location.latitude, input.location.longitude, input.location.accuracy, nowMs, nowMs],
+      values: [attendanceId, employee.id, workDate, nowMs, input.location.latitude, input.location.longitude, input.location.accuracy, nowMs, nowMs],
     });
   } else if (requestedType === AttendanceEventType.CLOCK_OUT && attendance) {
     operations.push({
@@ -126,7 +191,7 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
   operations.push(
     {
       sql: `INSERT INTO "TimesheetDay" ("id", "employeeId", "clientId", "workDate", "state", "firstClockInAt", "lastClockOutAt", "regularMinutes", "overtimeMinutes", "breakMinutes", "lateMinutes", "earlyDepartureMinutes", "exceptionCodes", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT ("employeeId", "workDate") DO UPDATE SET "state" = excluded."state", "firstClockInAt" = excluded."firstClockInAt", "lastClockOutAt" = excluded."lastClockOutAt", "regularMinutes" = excluded."regularMinutes", "overtimeMinutes" = excluded."overtimeMinutes", "breakMinutes" = excluded."breakMinutes", "lateMinutes" = excluded."lateMinutes", "earlyDepartureMinutes" = excluded."earlyDepartureMinutes", "exceptionCodes" = excluded."exceptionCodes", "version" = "TimesheetDay"."version" + 1, "updatedAt" = excluded."updatedAt"`,
-      values: [randomUUID(), employee.id, clientId, workDate, scheduleExceptions.state, calculation.firstClockInAt?.getTime() ?? null, calculation.lastClockOutAt?.getTime() ?? null, calculation.regularMinutes, calculation.overtimeMinutes, calculation.breakMinutes, scheduleMetrics.lateMinutes, scheduleMetrics.earlyDepartureMinutes, JSON.stringify(scheduleExceptions.exceptionCodes), nowMs, nowMs],
+      values: [timesheetId, employee.id, clientId, workDate, scheduleExceptions.state, calculation.firstClockInAt?.getTime() ?? null, calculation.lastClockOutAt?.getTime() ?? null, calculation.regularMinutes, calculation.overtimeMinutes, calculation.breakMinutes, scheduleMetrics.lateMinutes, scheduleMetrics.earlyDepartureMinutes, JSON.stringify(scheduleExceptions.exceptionCodes), nowMs, nowMs],
     },
     {
       sql: `INSERT INTO "AuditLog" ("id", "actorUserId", "clientId", "action", "entityType", "entityId", "details", "requestId", "ipAddress", "userAgent", "createdAt") VALUES (?, ?, ?, ?, 'AttendanceEvent', ?, ?, ?, ?, ?, ?)`,
@@ -141,12 +206,58 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
   }
 
   await executeD1Batch(operations);
-  const [event, timesheet, storedAttendance] = await Promise.all([
-    prisma.attendanceEvent.findUnique({ where: { id: eventId } }),
-    prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
-    prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
-  ]);
-  if (!event || !timesheet) throw new Error("D1 attendance batch completed without the expected records");
+  const event = {
+    id: eventId,
+    employeeId: employee.id,
+    clientId,
+    workDate,
+    type: requestedType,
+    source: "MOBILE_GPS" as const,
+    occurredAt: now,
+    worksiteId: acceptedWorksite.id,
+    latitude: input.location.latitude,
+    longitude: input.location.longitude,
+    accuracyMeters: input.location.accuracy,
+    distanceMeters: acceptedWorksite.distanceMeters,
+    acceptedRadiusMeters: acceptedWorksite.radiusMeters,
+    idempotencyKey: input.idempotencyKey,
+    createdByUserId: actorUserId,
+    deviceDetails: { userAgent },
+    createdAt: now,
+  };
+  const timesheet = {
+    ...existingTimesheet,
+    id: timesheetId,
+    employeeId: employee.id,
+    clientId,
+    workDate,
+    state: scheduleExceptions.state,
+    firstClockInAt: calculation.firstClockInAt,
+    lastClockOutAt: calculation.lastClockOutAt,
+    regularMinutes: calculation.regularMinutes,
+    overtimeMinutes: calculation.overtimeMinutes,
+    breakMinutes: calculation.breakMinutes,
+    lateMinutes: scheduleMetrics.lateMinutes,
+    earlyDepartureMinutes: scheduleMetrics.earlyDepartureMinutes,
+    leaveMinutes: existingTimesheet?.leaveMinutes ?? 0,
+    paidLeaveMinutes: existingTimesheet?.paidLeaveMinutes ?? 0,
+    unpaidLeaveMinutes: existingTimesheet?.unpaidLeaveMinutes ?? 0,
+    isAbsent: existingTimesheet?.isAbsent ?? false,
+    exceptionCodes: scheduleExceptions.exceptionCodes,
+    version: existingTimesheet ? existingTimesheet.version + 1 : 1,
+    approvedAt: existingTimesheet?.approvedAt ?? null,
+    lockedAt: existingTimesheet?.lockedAt ?? null,
+    createdAt: existingTimesheet?.createdAt ?? now,
+    updatedAt: now,
+    payPeriodId: existingTimesheet?.payPeriodId ?? null,
+  };
+  const storedAttendance = requestedType === AttendanceEventType.CLOCK_IN
+    ? attendance
+      ? { ...attendance, clockOutAt: null, clockOutLatitude: null, clockOutLongitude: null, clockOutAccuracy: null, status: AttendanceStatus.CLOCKED_IN, updatedAt: now }
+      : { id: attendanceId, employeeId: employee.id, workDate, clockInAt: now, clockOutAt: null, clockInLatitude: input.location.latitude, clockInLongitude: input.location.longitude, clockInAccuracy: input.location.accuracy, clockOutLatitude: null, clockOutLongitude: null, clockOutAccuracy: null, status: AttendanceStatus.CLOCKED_IN, createdAt: now, updatedAt: now }
+    : requestedType === AttendanceEventType.CLOCK_OUT && attendance
+      ? { ...attendance, clockOutAt: now, clockOutLatitude: input.location.latitude, clockOutLongitude: input.location.longitude, clockOutAccuracy: input.location.accuracy, status: AttendanceStatus.CLOCKED_OUT, updatedAt: now }
+      : attendance;
   return { event, timesheet, attendance: storedAttendance, replayed: false, webhookDeliveryId };
 }
 
@@ -154,10 +265,11 @@ async function performAction(request: Request, response: Response, requestedType
   const input = actionInput(request, response);
   if (!input) return;
 
-  const employee = await prisma.employee.findUnique({
-    where: { userId: response.locals.auth.sub },
-    include: { user: { select: { clientId: true } } },
-  });
+  const d1Preflight = isD1Database() ? await loadD1AttendancePreflight(response.locals.auth.sub, input.location) : null;
+  const employee = d1Preflight?.employee ?? await prisma.employee.findUnique({
+      where: { userId: response.locals.auth.sub },
+      include: { user: { select: { clientId: true } } },
+    });
   if (!employee?.user.clientId) {
     response.status(403).json({ error: { code: "EMPLOYEE_REQUIRED", message: "An employee account assigned to an organization is required" }, requestId: response.locals.requestId });
     return;
@@ -168,14 +280,19 @@ async function performAction(request: Request, response: Response, requestedType
   }
   const clientId = employee.user.clientId;
 
-  const pendingCorrection = await prisma.attendanceCorrection.findFirst({ where: { employeeId: employee.id, status: RequestStatus.PENDING }, select: { requestedValues: true }, orderBy: { createdAt: "desc" } });
-  const pendingValues = pendingCorrection?.requestedValues as { requestKind?: string; action?: string } | undefined;
+  const [pendingCorrection, policy, locationValidation] = d1Preflight
+    ? [null, d1Preflight.policy, d1Preflight.locationValidation] as const
+    : await Promise.all([
+        prisma.attendanceCorrection.findFirst({ where: { employeeId: employee.id, status: RequestStatus.PENDING }, select: { requestedValues: true }, orderBy: { createdAt: "desc" } }),
+        prisma.workPolicy.findUnique({ where: { clientId } }),
+        validateLocation(clientId, input.location),
+      ]);
+  const pendingValues = d1Preflight?.pendingValues ?? pendingCorrection?.requestedValues as { requestKind?: string; action?: string } | undefined;
   if (pendingValues?.requestKind === "GPS_CLOCK_EXCEPTION" && pendingValues.action === requestedType) {
     response.status(409).json({ error: { code: "CLOCK_EXCEPTION_PENDING", message: "A GPS clock request for this action is awaiting administrator review" }, requestId: response.locals.requestId });
     return;
   }
 
-  const policy = await prisma.workPolicy.findUnique({ where: { clientId } });
   if (policy && input.location.accuracy > policy.maximumGpsAccuracy) {
     const recordGpsRejection = async (transaction: Prisma.TransactionClient) => {
       const workDate = attendanceDate();
@@ -219,7 +336,6 @@ async function performAction(request: Request, response: Response, requestedType
     return;
   }
 
-  const locationValidation = await validateLocation(clientId, input.location);
   if (!locationValidation.valid || !locationValidation.worksite) {
     response.status(403).json({ error: { code: "OUTSIDE_WORKSITE", message: locationValidation.reason ?? "The location is not allowed" }, location: locationValidation, requestId: response.locals.requestId });
     return;

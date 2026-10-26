@@ -22,7 +22,6 @@ const schema = z.object({
   RESEND_API_KEY: z.string().default(""),
   EMAIL_FROM: z.string().default(""),
   APP_BASE_URL: z.string().url().default("http://localhost:5173"),
-  SENTRY_DSN: z.string().url().or(z.literal("")).default(""),
   FEATURE_ATTENDANCE_V2: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   FEATURE_WORKFORCE_V2: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   FEATURE_PAYROLL: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
