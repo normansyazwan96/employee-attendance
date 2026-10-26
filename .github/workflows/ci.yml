@@ -57,7 +57,6 @@ jobs:
         run: |
           npm run db:generate
           npx prisma migrate deploy --schema prisma/schema.prisma
-          npm run db:seed
 
       - name: Typecheck
         run: npm run typecheck
@@ -70,6 +69,9 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration --workspace=@attendance/api
+
+      - name: Seed browser test accounts
+        run: npm run db:seed
 
       - name: Build
         run: npm run build
