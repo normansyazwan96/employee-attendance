@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
-import { getWebhookDetails, type WebhookDetails as WebhookDetailsData } from "../lib/admin-system";
+import { getWebhookDeliveries, getWebhookDetails, type WebhookDelivery, type WebhookDetails as WebhookDetailsData } from "../lib/admin-system";
 import { useLanguage } from "../lib/language-context";
 
 export function WebhookDetails(): JSX.Element {
   const { t } = useLanguage();
   const [details, setDetails] = useState<WebhookDetailsData | null>(null);
   const [error, setError] = useState("");
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
 
   useEffect(() => {
-    getWebhookDetails()
-      .then(setDetails)
+    Promise.all([getWebhookDetails(), getWebhookDeliveries()])
+      .then(([configuration, history]) => { setDetails(configuration); setDeliveries(history); })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t("unableToLoadWebhook")));
   }, [t]);
 
@@ -31,7 +32,9 @@ export function WebhookDetails(): JSX.Element {
         <div><dt className="font-semibold text-slate-500">{t("signature")}</dt><dd className="mt-1 font-mono text-xs text-slate-700">{details.signatureHeader} / {details.signatureAlgorithm}</dd></div>
         <div><dt className="font-semibold text-slate-500">{t("webhookSecret")}</dt><dd className="mt-1 text-slate-700">{details.secretConfigured ? t("configured") : t("notConfigured")}</dd></div>
         <div><dt className="font-semibold text-slate-500">{t("deliveryBehavior")}</dt><dd className="mt-1 text-slate-700">{t("webhookFailureBehavior")}</dd></div>
+        <div><dt className="font-semibold text-slate-500">Queue</dt><dd className="mt-1 text-slate-700">{details.delivery.mode}, {details.delivery.maxRetries} retries, {details.delivery.retryDelaySeconds}s delay</dd></div>
       </dl>
+      {deliveries.length > 0 && <div className="mt-5 border-t border-slate-200 pt-4"><h3 className="text-sm font-semibold">Delivery history</h3><div className="mt-2 space-y-2 text-xs text-slate-600">{deliveries.slice(0, 20).map((item) => <p key={item.id}>{item.eventType} · {item.status} · {item.attempts} attempt(s){item.responseStatus ? ` · HTTP ${item.responseStatus}` : ""}</p>)}</div></div>}
     </div>}
   </section>;
 }

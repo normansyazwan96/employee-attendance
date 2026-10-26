@@ -1,0 +1,17 @@
+import { useEffect, useState } from "react";
+import { getDatabaseRecoveryStatus, type DatabaseRecoveryStatus as RecoveryStatus } from "../lib/admin-system";
+import { useLanguage } from "../lib/language-context";
+
+export function DatabaseRecoveryStatus(): JSX.Element {
+  const { language, locale } = useLanguage();
+  const ms = language === "ms";
+  const [status, setStatus] = useState<RecoveryStatus | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => { getDatabaseRecoveryStatus().then(setStatus).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Unable to load recovery status")); }, []);
+  const timestamp = (value?: string | null) => value ? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : (ms ? "Belum dijalankan" : "Not run yet");
+  return <section className="mb-8 border-y border-slate-200 py-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-semibold">{ms ? "Pemulihan pangkalan data" : "Database recovery"}</h2><p className="mt-1 text-sm text-slate-600">{ms ? "Status integriti D1, jumlah kawalan dan latihan pemulihan terkini." : "D1 integrity, control totals, and the latest restore drill."}</p></div>{status && <span className={`rounded-md px-2.5 py-1 text-xs font-semibold ${status.healthy ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>{status.healthy ? (ms ? "Sihat" : "Healthy") : (ms ? "Perlu perhatian" : "Needs attention")}</span>}</div>
+    {error && <p role="alert" className="mt-3 rounded-md bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+    {status && <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4"><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Integriti" : "Integrity"}</span><strong className="mt-1 block">{status.totals.integrity} · {status.totals.foreignKeyViolations} FK</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Organisasi" : "Organizations"}</span><strong className="mt-1 block">{status.totals.liveOrganizations} {ms ? "sebenar" : "live"} · {status.totals.testOrganizations} {ms ? "ujian" : "test"}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Semakan harian" : "Daily check"}</span><strong className="mt-1 block">{timestamp(status.latestCheck?.createdAt)}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Latihan pemulihan" : "Restore drill"}</span><strong className="mt-1 block">{timestamp(status.latestDrill?.createdAt)}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Pengguna / pekerja" : "Users / employees"}</span><strong className="mt-1 block">{status.totals.users} / {status.totals.employees}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Peristiwa kehadiran" : "Attendance events"}</span><strong className="mt-1 block">{status.totals.attendanceEvents}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Lembaran masa" : "Timesheet days"}</span><strong className="mt-1 block">{status.totals.timesheetDays}</strong></div><div><span className="block text-xs font-semibold uppercase text-slate-500">{ms ? "Pemilik aktif" : "Active owners"}</span><strong className="mt-1 block">{status.totals.ownerCount}</strong></div></div>}
+  </section>;
+}

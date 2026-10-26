@@ -1,4 +1,3 @@
-import { Role } from "@prisma/client";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../services/prisma.js";
@@ -20,14 +19,14 @@ const include = { employee: { include: { user: { select: { username: true, clien
 
 export async function getAdminSchedules(_request: Request, response: Response): Promise<void> {
   const context = await getAdminContext(response);
-  if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
-  const schedules = await prisma.employeeSchedule.findMany({ where: context.auth.role === Role.DEV_ADMIN ? undefined : { employee: { user: context.employeeUserWhere } }, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
+  if (!context?.clientId) { response.status(400).json({ error: "Select an organization before viewing schedules" }); return; }
+  const schedules = await prisma.employeeSchedule.findMany({ where: { employee: { user: context.employeeUserWhere } }, include, orderBy: [{ isActive: "desc" }, { startTime: "asc" }] });
   response.json({ schedules: schedules.map(view) });
 }
 
 export async function upsertAdminSchedule(request: Request, response: Response): Promise<void> {
   const context = await getAdminContext(response);
-  if (!context) { response.status(401).json({ error: "A client account is required" }); return; }
+  if (!context?.clientId) { response.status(400).json({ error: "Select an organization before managing schedules" }); return; }
   const parsed = scheduleSchema.safeParse(request.body);
   if (!parsed.success) { response.status(400).json({ error: "Enter an employee, workdays, valid times, and a grace period" }); return; }
   const employee = await prisma.employee.findFirst({ where: { id: parsed.data.employeeId, user: context.employeeUserWhere }, select: { id: true, user: { select: { clientId: true } } } });

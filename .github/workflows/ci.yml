@@ -33,6 +33,13 @@ jobs:
       JWT_SECRET: ci-secret-that-is-at-least-thirty-two-characters-long
       ATTENDANCE_TIMEZONE: UTC
       VITE_API_URL: http://127.0.0.1:3000
+      SEED_DEV_ADMIN_PASSWORD: CI-DevAdmin!2345
+      SEED_ADMIN_PASSWORD: CI-Admin!2345
+      SEED_EMPLOYEE_PASSWORD: CI-Employee!2345
+      SEED_MUST_CHANGE_PASSWORD: "false"
+      E2E_DEV_ADMIN_PASSWORD: CI-DevAdmin!2345
+      E2E_ADMIN_PASSWORD: CI-Admin!2345
+      E2E_EMPLOYEE_PASSWORD: CI-Employee!2345
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,7 +57,6 @@ jobs:
         run: |
           npm run db:generate
           npx prisma migrate deploy --schema prisma/schema.prisma
-          npm run db:seed
 
       - name: Typecheck
         run: npm run typecheck
@@ -63,6 +69,9 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration --workspace=@attendance/api
+
+      - name: Seed browser test accounts
+        run: npm run db:seed
 
       - name: Build
         run: npm run build

@@ -1,11 +1,12 @@
-import { AttendanceStatus, Prisma } from "@prisma/client";
+import { AttendanceEventType, AttendanceStatus, Prisma } from "@prisma/client";
 import type { Request, Response } from "express";
 import { prisma } from "../services/prisma.js";
 import { validateLocation, type Location } from "../services/geofence.js";
 import { z } from "zod";
 import { attendanceDate } from "../utils/attendance-date.js";
 import { calculateAttendanceHours, classifyAttendance } from "../services/attendance-rules.js";
-import { sendAttendanceWebhook } from "../services/webhook.js";
+import { recordLegacyAttendanceEvent } from "../services/legacy-attendance-events.js";
+import { enqueueWebhookDelivery } from "../services/webhook-queue.js";
 
 async function currentEmployee(userId: string) {
   return prisma.employee.findUnique({ where: { userId }, include: { user: { select: { clientId: true } }, schedule: true } });
@@ -19,10 +20,10 @@ function requestLocation(request: Request, response: Response): Location | null 
   return parsed.data;
 }
 
-async function validatedLocation(clientId: string | null, location: Location, response: Response): Promise<boolean> {
+async function validatedLocation(clientId: string | null, location: Location, response: Response) {
   const validation = await validateLocation(clientId, location);
-  if (!validation.valid) { response.status(403).json({ error: validation.reason, location: validation }); return false; }
-  return true;
+  if (!validation.valid) { response.status(403).json({ error: validation.reason, location: validation }); return null; }
+  return validation;
 }
 
 export async function getTodayAttendance(_request: Request, response: Response): Promise<void> {
@@ -44,25 +45,18 @@ export async function clockIn(_request: Request, response: Response): Promise<vo
   if (!location) return;
   const employee = await currentEmployee(response.locals.auth.sub);
   if (!employee) { response.status(403).json({ error: "An employee account is required" }); return; }
-  if (!(await validatedLocation(employee.user.clientId, location, response))) return;
+  if (employee.employmentStatus !== "ACTIVE") { response.status(403).json({ error: "Only active employees can record attendance" }); return; }
+  const validation = await validatedLocation(employee.user.clientId, location, response); if (!validation) return;
   const workDate = attendanceDate();
   const existing = await prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } });
   if (existing) { response.status(409).json({ error: "You have already clocked in today" }); return; }
   try {
-    const attendance = await prisma.attendanceRecord.create({ data: { employeeId: employee.id, workDate, clockInAt: new Date(), clockInLatitude: location.latitude, clockInLongitude: location.longitude, clockInAccuracy: location.accuracy } });
-    await sendAttendanceWebhook({
-      event: "attendance.clock_in",
-      employeeId: employee.id,
-      employeeName: `${employee.firstName} ${employee.lastName}`,
-      workDate,
-      timestamp: new Date().toISOString(),
-      location,
-    }, {
-      url: process.env.WEBHOOK_URL,
-      secret: process.env.WEBHOOK_SECRET,
-    }).catch((error: unknown) => {
-      console.warn("Attendance clock-in webhook failed:", error instanceof Error ? error.message : error);
+    const { attendance, deliveryId } = await prisma.$transaction(async (transaction) => {
+      const attendance = await transaction.attendanceRecord.create({ data: { employeeId: employee.id, workDate, clockInAt: new Date(), clockInLatitude: location.latitude, clockInLongitude: location.longitude, clockInAccuracy: location.accuracy } });
+      const deliveryId = employee.user.clientId ? await recordLegacyAttendanceEvent(transaction, { attendanceId: attendance.id, employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`, clientId: employee.user.clientId, workDate, type: AttendanceEventType.CLOCK_IN, occurredAt: attendance.clockInAt, location, validation, actorUserId: response.locals.auth.sub }) : null;
+      return { attendance, deliveryId };
     });
+    if (deliveryId) await enqueueWebhookDelivery(deliveryId);
     response.status(201).json({ attendance });
   } catch (error: unknown) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") { response.status(409).json({ error: "You have already clocked in today" }); return; }
@@ -75,26 +69,21 @@ export async function clockOut(_request: Request, response: Response): Promise<v
   if (!location) return;
   const employee = await currentEmployee(response.locals.auth.sub);
   if (!employee) { response.status(403).json({ error: "An employee account is required" }); return; }
-  if (!(await validatedLocation(employee.user.clientId, location, response))) return;
+  if (employee.employmentStatus !== "ACTIVE") { response.status(403).json({ error: "Only active employees can record attendance" }); return; }
+  const validation = await validatedLocation(employee.user.clientId, location, response); if (!validation) return;
   const attendance = await prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate: attendanceDate() } } });
   if (!attendance) { response.status(400).json({ error: "Clock in before clocking out" }); return; }
   if (attendance.clockOutAt) { response.status(409).json({ error: "You have already clocked out today" }); return; }
-  const updatedRecord = await prisma.attendanceRecord.updateMany({ where: { id: attendance.id, clockOutAt: null }, data: { clockOutAt: new Date(), clockOutLatitude: location.latitude, clockOutLongitude: location.longitude, clockOutAccuracy: location.accuracy, status: AttendanceStatus.CLOCKED_OUT } });
-  if (updatedRecord.count === 0) { response.status(409).json({ error: "You have already clocked out today" }); return; }
-  const updated = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: attendance.id } });
-  await sendAttendanceWebhook({
-    event: "attendance.clock_out",
-    employeeId: employee.id,
-    employeeName: `${employee.firstName} ${employee.lastName}`,
-    workDate: attendance.workDate,
-    timestamp: new Date().toISOString(),
-    location,
-  }, {
-    url: process.env.WEBHOOK_URL,
-    secret: process.env.WEBHOOK_SECRET,
-  }).catch((error: unknown) => {
-    console.warn("Attendance clock-out webhook failed:", error instanceof Error ? error.message : error);
+  const result = await prisma.$transaction(async (transaction) => {
+    const updatedRecord = await transaction.attendanceRecord.updateMany({ where: { id: attendance.id, clockOutAt: null }, data: { clockOutAt: new Date(), clockOutLatitude: location.latitude, clockOutLongitude: location.longitude, clockOutAccuracy: location.accuracy, status: AttendanceStatus.CLOCKED_OUT } });
+    if (updatedRecord.count === 0) return null;
+    const updated = await transaction.attendanceRecord.findUniqueOrThrow({ where: { id: attendance.id } });
+    const deliveryId = employee.user.clientId && updated.clockOutAt ? await recordLegacyAttendanceEvent(transaction, { attendanceId: attendance.id, employeeId: employee.id, employeeName: `${employee.firstName} ${employee.lastName}`, clientId: employee.user.clientId, workDate: attendance.workDate, type: AttendanceEventType.CLOCK_OUT, occurredAt: updated.clockOutAt, location, validation, actorUserId: response.locals.auth.sub }) : null;
+    return { updated, deliveryId };
   });
+  if (!result) { response.status(409).json({ error: "You have already clocked out today" }); return; }
+  if (result.deliveryId) await enqueueWebhookDelivery(result.deliveryId);
+  const { updated } = result;
   response.json({ attendance: updated });
 }
 

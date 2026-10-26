@@ -11,5 +11,12 @@ generated/
 .wrangler/
 .wrangler-dist/
 .env*
+.dev.vars*
+d1/data/
+d1/backups/
+.tmp/
+test-account-credentials.txt
+prisma/d1.db*
+apps/api/src/generated/d1/
 .agents/
 skills-lock.json

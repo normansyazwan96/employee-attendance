@@ -1,14 +1,10 @@
-import { clearSession, getSession } from "./auth";
-import { apiUrl } from "./api";
+import { authenticatedFetch } from "./auth";
 
-export type AdminAccount = { id: string; username: string; role: "ADMIN"; isActive: boolean; displayName: string | null; clientId: string | null; clientName: string | null };
+export type AdminAccount = { id: string; username: string; role: "ADMIN" | "GLOBAL_ADMIN"; isActive: boolean; displayName: string | null; clientId: string | null; clientName: string | null };
 export type AdminAccountInput = { username: string; displayName: string; password: string };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const session = getSession();
-  if (!session) throw new Error("Please sign in again");
-  const response = await fetch(`${apiUrl}/api/v1${path}`, { ...options, headers: { Authorization: `Bearer ${session.token}`, "Content-Type": "application/json", ...options?.headers } });
-  if (response.status === 401) { clearSession(); throw new Error("Your session has expired. Please sign in again."); }
+  const response = await authenticatedFetch(`/api/v1${path}`, { ...options, headers: { "Content-Type": "application/json", ...options?.headers } });
   const body = await response.json() as { error?: string };
   if (!response.ok) throw new Error(body.error ?? "Unable to manage accounts");
   return body as T;
@@ -18,3 +14,7 @@ export async function getAdminAccounts(): Promise<AdminAccount[]> { return (awai
 export async function createAdminAccount(input: AdminAccountInput): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>("/admin/admins", { method: "POST", body: JSON.stringify(input) })).admin; }
 export async function resetManagedAccountPassword(id: string, password: string): Promise<void> { await request(`/admin/accounts/${id}/password`, { method: "PATCH", body: JSON.stringify({ password }) }); }
 export async function updateAdminAccountStatus(id: string, isActive: boolean): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>(`/admin/admins/${id}/status`, { method: "PATCH", body: JSON.stringify({ isActive }) })).admin; }
+export async function getGlobalAdminAccounts(): Promise<AdminAccount[]> { return (await request<{ admins: AdminAccount[] }>("/admin/global-admins")).admins; }
+export async function createGlobalAdminAccount(input: AdminAccountInput): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>("/admin/global-admins", { method: "POST", body: JSON.stringify(input) })).admin; }
+export async function updateGlobalAdminAccountStatus(id: string, isActive: boolean): Promise<AdminAccount> { return (await request<{ admin: AdminAccount }>(`/admin/global-admins/${id}/status`, { method: "PATCH", body: JSON.stringify({ isActive }) })).admin; }
+export async function resetGlobalAdminPassword(id: string, password: string): Promise<void> { await request(`/admin/global-admins/${id}/password`, { method: "PATCH", body: JSON.stringify({ password }) }); }

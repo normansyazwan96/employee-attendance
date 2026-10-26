@@ -10,8 +10,9 @@ import { createWorksite, deleteWorksite, getWorksites, updateWorksite, type Work
 import { AdminManagement } from "../components/AdminManagement";
 import { getSession } from "../lib/auth";
 import { WebhookDetails } from "../components/WebhookDetails";
+import { getMalaysiaHolidayCalendar } from "../lib/workforce";
 
-const emptyWorksite: WorksiteInput = { name: "", latitude: 40.7128, longitude: -74.006, radiusMeters: 150, isActive: true };
+const emptyWorksite: WorksiteInput = { name: "", stateCode: "", latitude: 3.139, longitude: 101.6869, radiusMeters: 150, isActive: true };
 const WorksiteMap = lazy(() => import("../components/WorksiteMap").then(({ WorksiteMap: map }) => ({ default: map })));
 
 export function AdminPage(): JSX.Element {
@@ -20,19 +21,18 @@ export function AdminPage(): JSX.Element {
   const [attendanceFilters, setAttendanceFilters] = useState<AttendanceFilters>({ page: 1, pageSize: 25 });
   const [attendancePages, setAttendancePages] = useState({ page: 1, pageSize: 25, total: 0, totalPages: 0 });
   const [worksites, setWorksites] = useState<Worksite[]>([]);
+  const [states, setStates] = useState<Record<string, string>>({});
   const [form, setForm] = useState<WorksiteInput>({ ...emptyWorksite });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [adminAccountsVersion, setAdminAccountsVersion] = useState(0);
-  const [preferredOwnerAdminId, setPreferredOwnerAdminId] = useState("");
   const isDevAdmin = getSession()?.user.role === "DEV_ADMIN";
   const time = (value: string | null): string => value ? new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "--";
   const date = (value: string): string => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
 
   useEffect(() => {
-    Promise.all([getAdminAttendance(attendanceFilters), getWorksites()]).then(([attendancePage, sites]) => { setAttendance(attendancePage.attendance); setAttendancePages(attendancePage.pagination); setWorksites(sites); }).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t("unableToLoadAdminData")));
+    Promise.all([getAdminAttendance(attendanceFilters), getWorksites(), getMalaysiaHolidayCalendar(new Date().getFullYear())]).then(([attendancePage, sites, calendar]) => { setAttendance(attendancePage.attendance); setAttendancePages(attendancePage.pagination); setWorksites(sites); setStates(calendar.states); }).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : t("unableToLoadAdminData")));
   }, [attendanceFilters, t]);
 
   const stats = useMemo(() => {
@@ -43,7 +43,7 @@ export function AdminPage(): JSX.Element {
 
   function editWorksite(worksite: Worksite): void {
     setEditingId(worksite.id);
-    setForm({ name: worksite.name, latitude: worksite.latitude, longitude: worksite.longitude, radiusMeters: worksite.radiusMeters, isActive: worksite.isActive });
+    setForm({ name: worksite.name, stateCode: worksite.stateCode, latitude: worksite.latitude, longitude: worksite.longitude, radiusMeters: worksite.radiusMeters, isActive: worksite.isActive });
   }
   function resetWorksite(): void { setEditingId(null); setForm({ ...emptyWorksite }); }
   function setNumber(field: "latitude" | "longitude" | "radiusMeters", value: string): void { setForm((current) => ({ ...current, [field]: Number(value) })); }
@@ -75,21 +75,22 @@ export function AdminPage(): JSX.Element {
         <form onSubmit={(event) => void saveWorksite(event)} className="rounded-2xl bg-white p-5 shadow-card">
           <div className="mb-5 flex items-center justify-between"><div><h3 className="font-bold">{editingId ? t("editWorksite") : t("addAWorksite")}</h3><p className="mt-1 text-sm text-slate-500">{t("coordinatesUseDecimalDegrees")}</p></div>{editingId && <button type="button" onClick={resetWorksite} className="text-sm font-bold text-brand-600">{t("cancel")}</button>}</div>
           <label className="block text-sm font-semibold text-slate-700">{t("name")}<input required maxLength={120} value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-brand-500" placeholder={t("headOffice")} /></label>
+          <label className="mt-4 block text-sm font-semibold text-slate-700">{language === "ms" ? "Negeri" : "State"}<select required value={form.stateCode} onChange={(event) => setForm((current) => ({ ...current, stateCode: event.target.value }))} className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 font-normal outline-none focus:border-brand-500"><option value="" disabled>{language === "ms" ? "Pilih negeri" : "Select state"}</option>{Object.entries(states).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
           <div className="mt-4 grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-slate-700">{t("latitude")}<input required type="number" min="-90" max="90" step="any" value={form.latitude} onChange={(event) => setNumber("latitude", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-brand-500" /></label><label className="text-sm font-semibold text-slate-700">{t("longitude")}<input required type="number" min="-180" max="180" step="any" value={form.longitude} onChange={(event) => setNumber("longitude", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-brand-500" /></label></div>
           <label className="mt-4 block text-sm font-semibold text-slate-700">{t("allowedRadius")} <span className="font-normal text-slate-500">{t("radiusHint")}</span><input required type="number" min="25" max="10000" step="1" value={form.radiusMeters} onChange={(event) => setNumber("radiusMeters", event.target.value)} className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 font-normal outline-none focus:border-brand-500" /></label>
           <label className="mt-4 flex items-center gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))} className="h-4 w-4 accent-teal-600" />{t("activeForEmployeeLocationChecks")}</label>
           <button disabled={saving} className="mt-6 h-11 w-full rounded-xl bg-ink text-sm font-bold text-white disabled:cursor-wait disabled:opacity-60">{saving ? t("saving") : editingId ? t("saveChanges") : t("addWorksite")}</button>
         </form>
       </div>
-      <div className="mt-5 grid gap-3 md:grid-cols-2">{worksites.map((worksite) => <article key={worksite.id} className="flex items-start justify-between gap-4 rounded-2xl bg-white p-5 shadow-card"><div><div className="flex items-center gap-2"><h3 className="font-bold">{worksite.name}</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${worksite.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{worksite.isActive ? t("active") : t("inactive")}</span></div><p className="mt-2 text-sm text-slate-500">{worksite.radiusMeters} m {t("radius")}</p><p className="mt-1 font-mono text-xs text-slate-400">{worksite.latitude}, {worksite.longitude}</p></div><div className="flex shrink-0 gap-3 text-sm font-bold"><button onClick={() => editWorksite(worksite)} className="text-brand-600">{t("edit")}</button><button onClick={() => void removeWorksite(worksite.id)} className="text-rose-600">{t("delete")}</button></div></article>)}</div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2">{worksites.map((worksite) => <article key={worksite.id} className="flex items-start justify-between gap-4 rounded-2xl bg-white p-5 shadow-card"><div><div className="flex items-center gap-2"><h3 className="font-bold">{worksite.name}</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${worksite.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{worksite.isActive ? t("active") : t("inactive")}</span></div><p className="mt-2 text-sm font-semibold text-slate-700">{states[worksite.stateCode] ?? worksite.stateCode}</p><p className="mt-1 text-sm text-slate-500">{worksite.radiusMeters} m {t("radius")}</p><p className="mt-1 font-mono text-xs text-slate-400">{worksite.latitude}, {worksite.longitude}</p></div><div className="flex shrink-0 gap-3 text-sm font-bold"><button onClick={() => editWorksite(worksite)} className="text-brand-600">{t("edit")}</button><button onClick={() => void removeWorksite(worksite.id)} className="text-rose-600">{t("delete")}</button></div></article>)}</div>
       {worksites.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">{t("noWorksitesConfiguredYet")}</div>}
     </section>
 
-    {isDevAdmin && <AdminManagement onAdminCreated={setPreferredOwnerAdminId} onAccountsChanged={() => setAdminAccountsVersion((current) => current + 1)} />}
+    {isDevAdmin && <AdminManagement />}
     {isDevAdmin && <WebhookDetails />}
-    <div id="employees"><EmployeeManagement adminAccountsVersion={adminAccountsVersion} preferredOwnerAdminId={preferredOwnerAdminId} /></div>
+    <div id="employees"><EmployeeManagement /></div>
     <ScheduleManagement />
-    <div id="audit"><AuditHistory /></div>
+    {isDevAdmin && <div id="audit"><AuditHistory /></div>}
     <button type="button" onClick={() => void exportAttendance()} disabled={exporting} className="mt-4 h-10 rounded-lg bg-ink px-3 text-sm font-bold text-white disabled:opacity-50">{exporting ? t("exporting") : t("exportCsv")}</button>
 
     <section className="mt-10"><div className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 shadow-card"><label className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("from")}<input type="date" value={attendanceFilters.from ?? ""} onChange={(event) => setAttendanceFilters((current) => ({ ...current, from: event.target.value || undefined, page: 1 }))} className="mt-1 block h-10 rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label><label className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("to")}<input type="date" value={attendanceFilters.to ?? ""} onChange={(event) => setAttendanceFilters((current) => ({ ...current, to: event.target.value || undefined, page: 1 }))} className="mt-1 block h-10 rounded-lg border border-slate-200 px-2 text-sm font-normal" /></label><button type="button" onClick={() => setAttendanceFilters({ page: 1, pageSize: 25 })} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600">{t("clear")}</button><span className="ml-auto text-sm text-slate-500">{attendancePages.total} {t("records")}</span><button type="button" disabled={attendancePages.page <= 1} onClick={() => setAttendanceFilters((current) => ({ ...current, page: attendancePages.page - 1 }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 disabled:opacity-40">{t("previous")}</button><span className="text-sm text-slate-500">{t("page")} {attendancePages.page} {t("of")} {Math.max(attendancePages.totalPages, 1)}</span><button type="button" disabled={attendancePages.page >= attendancePages.totalPages} onClick={() => setAttendanceFilters((current) => ({ ...current, page: attendancePages.page + 1 }))} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 disabled:opacity-40">{t("next")}</button></div></section>

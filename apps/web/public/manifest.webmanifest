@@ -1,0 +1,12 @@
+{
+  "name": "attend+",
+  "short_name": "attend+",
+  "description": "Employee attendance and workforce requests",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0911",
+  "theme_color": "#0b0911",
+  "icons": [
+    { "src": "/attendance-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

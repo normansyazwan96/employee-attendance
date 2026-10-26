@@ -8,16 +8,123 @@
   "workers_dev": true,
   "preview_urls": false,
   "upload_source_maps": true,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    }
+  },
   "assets": {
     "directory": "./apps/web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "queues": {
+    "producers": [
+      { "binding": "WEBHOOK_QUEUE", "queue": "employee-attendance-webhooks" },
+      { "binding": "PAYROLL_EXPORT_QUEUE", "queue": "employee-attendance-payroll-exports" }
+    ],
+    "consumers": [
+      { "queue": "employee-attendance-webhooks", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-webhooks-dead-letter" },
+      { "queue": "employee-attendance-webhooks-dead-letter", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 1 },
+      { "queue": "employee-attendance-payroll-exports", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-payroll-exports-dead-letter" },
+      { "queue": "employee-attendance-payroll-exports-dead-letter", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 1 }
+    ]
+  },
+  "r2_buckets": [],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "employee-attendance-production", "database_id": "e5b9d26c-87ca-4e57-826e-00c6def00dea", "migrations_dir": "./d1/migrations" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "DATABASE_WRITE_COORDINATOR", "class_name": "DatabaseWriteCoordinator" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DatabaseWriteCoordinator"] }
+  ],
+  "ratelimits": [
+    { "name": "AUTH_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
   "vars": {
-    "CLIENT_ORIGIN": "https://employee-attendance-api-ruby.vercel.app",
-    "CLIENT_ORIGINS": "https://employee-attendance-api-ruby.vercel.app",
+    "APP_ENV": "production",
+    "CLIENT_ORIGIN": "https://employee-attendance.floweaversolutions.workers.dev",
+    "CLIENT_ORIGINS": "https://employee-attendance.floweaversolutions.workers.dev",
     "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
-    "WEBHOOK_URL": ""
+    "APP_BASE_URL": "https://employee-attendance.floweaversolutions.workers.dev",
+    "WEBHOOK_URL": "",
+    "DATABASE_BACKEND": "d1",
+    "FEATURE_ATTENDANCE_V2": "true",
+    "FEATURE_WORKFORCE_V2": "true",
+    "FEATURE_PAYROLL": "true"
+  },
+  "env": {
+    "staging": {
+      "workers_dev": true,
+      "preview_urls": false,
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true,
+          "persist": true
+        }
+      },
+      "assets": {
+        "directory": "./apps/web/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": ["/api/*"]
+      },
+      "triggers": {
+        "crons": ["*/5 * * * *"]
+      },
+      "queues": {
+        "producers": [
+          { "binding": "WEBHOOK_QUEUE", "queue": "employee-attendance-staging-webhooks" },
+          { "binding": "PAYROLL_EXPORT_QUEUE", "queue": "employee-attendance-staging-payroll-exports" }
+        ],
+        "consumers": [
+          { "queue": "employee-attendance-staging-webhooks", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-staging-webhooks-dead-letter" },
+          { "queue": "employee-attendance-staging-webhooks-dead-letter", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 1 },
+          { "queue": "employee-attendance-staging-payroll-exports", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 5, "retry_delay": 60, "dead_letter_queue": "employee-attendance-staging-payroll-exports-dead-letter" },
+          { "queue": "employee-attendance-staging-payroll-exports-dead-letter", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 1 }
+        ]
+      },
+      "r2_buckets": [],
+      "d1_databases": [
+        { "binding": "DB", "database_name": "employee-attendance-staging", "database_id": "3e4a5f18-53e1-4033-8403-dbe05adcda5c", "migrations_dir": "./d1/migrations" },
+        { "binding": "D1_SHADOW", "database_name": "employee-attendance-staging", "database_id": "3e4a5f18-53e1-4033-8403-dbe05adcda5c", "migrations_dir": "./d1/migrations" }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "name": "DATABASE_WRITE_COORDINATOR", "class_name": "DatabaseWriteCoordinator" }
+        ]
+      },
+      "ratelimits": [
+        { "name": "AUTH_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } }
+      ],
+      "vars": {
+        "APP_ENV": "staging",
+        "CLIENT_ORIGIN": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "CLIENT_ORIGINS": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "ATTENDANCE_TIMEZONE": "Asia/Kuala_Lumpur",
+        "APP_BASE_URL": "https://employee-attendance-staging.floweaversolutions.workers.dev",
+        "WEBHOOK_URL": "",
+        "DATABASE_BACKEND": "d1",
+        "D1_READ_MODE": "off",
+        "FEATURE_ATTENDANCE_V2": "true",
+        "FEATURE_WORKFORCE_V2": "true",
+        "FEATURE_PAYROLL": "true"
+      }
+    }
   }
 }
