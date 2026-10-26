@@ -15,7 +15,7 @@ test("admin can open focused administration routes", async ({ page }) => {
   test.skip(!adminPassword, "E2E_ADMIN_PASSWORD is required");
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill(adminPassword!);
+  await page.getByLabel("Password", { exact: true }).fill(adminPassword!);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
@@ -30,7 +30,7 @@ test("admin can log out", async ({ page }) => {
   test.skip(!adminPassword, "E2E_ADMIN_PASSWORD is required");
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill(adminPassword!);
+  await page.getByLabel("Password", { exact: true }).fill(adminPassword!);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.getByRole("button", { name: "Log out" }).click();
@@ -42,7 +42,7 @@ test("employee menu opens working navigation", async ({ page }) => {
   test.skip(!employeePassword, "E2E_EMPLOYEE_PASSWORD is required");
   await page.goto("/login");
   await page.getByLabel("Username").fill("john.smith");
-  await page.getByLabel("Password").fill(employeePassword!);
+  await page.getByLabel("Password", { exact: true }).fill(employeePassword!);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/\/employee$/);
   await page.getByRole("button", { name: "Open menu" }).click();
@@ -55,7 +55,7 @@ test("dev admin uses the full admin surface and profile", async ({ page }) => {
   test.skip(!devAdminPassword, "E2E_DEV_ADMIN_PASSWORD is required");
   await page.goto("/login");
   await page.getByLabel("Username").fill("devadmin");
-  await page.getByLabel("Password").fill(devAdminPassword!);
+  await page.getByLabel("Password", { exact: true }).fill(devAdminPassword!);
   await page.getByRole("button", { name: "Log in" }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/settings");
