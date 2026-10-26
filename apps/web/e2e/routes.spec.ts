@@ -23,7 +23,9 @@ test("admin can open focused administration routes", async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/employees$/);
   await expect(page.getByRole("heading", { name: "Employees" })).toBeVisible();
   await page.goto("/admin/audit");
-  await expect(page.getByRole("heading", { name: "Audit history" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Audit history" })).toHaveCount(0);
 });
 
 test("admin can log out", async ({ page }) => {
