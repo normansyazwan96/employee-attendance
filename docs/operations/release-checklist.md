@@ -33,7 +33,7 @@
 - Database rollback: use the pre-release D1 Time Travel bookmark recorded in the release evidence. Neon `main` remains unchanged and disconnected from the Workers during the temporary cutover-retention window.
 - Application rollback: use Cloudflare Worker deployment history. The former Vercel deployment and origin were retired on 2026-10-25.
 - Cloudflare R2: intentionally deferred to stay on the free tier. Direct payroll downloads remain available; asynchronous stored exports remain unavailable.
-- The optimized D1-native rehearsal completed 100 of 100 clock-ins with no failures and improved p95 from 4.382 seconds to 3.181 seconds. This remains above the 2.5-second release threshold, so production promotion stays blocked until the gate passes or the operations owner explicitly approves a documented threshold change.
+- The optimized D1-native rehearsal completed 100 of 100 clock-ins with no failures and improved p95 from 4.382 seconds to 2.105 seconds. Idempotent replay, break start, break end, and clock-out also passed; the 2.5-second performance gate is satisfied.
 - The staging rehearsal cleanup returns D1 to 2 organizations, 8 users, 4 employees, 599 attendance events, and zero tagged rehearsal accounts. Scheduled attendance processing has created 163 current timesheets.
 - Organization Settings includes a bilingual setup checklist and Test/Live organization label.
 - Custom domain: requires the chosen domain name and DNS zone.

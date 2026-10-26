@@ -29,12 +29,9 @@ export async function executeD1Batch(statements: Array<{ sql: string; values?: u
   await configuredD1Database.batch(statements.map(({ sql, values = [] }) => configuredD1Database!.prepare(sql).bind(...values)));
 }
 
-export async function queryD1Batch(statements: Array<{ sql: string; values?: unknown[] }>): Promise<Array<Record<string, unknown>[]>> {
+export async function queryD1First(sql: string, values: unknown[] = []): Promise<Record<string, unknown> | null> {
   if (!configuredD1Database) throw new Error("Cloudflare D1 is not configured");
-  const results = await configuredD1Database.batch<Record<string, unknown>>(
-    statements.map(({ sql, values = [] }) => configuredD1Database!.prepare(sql).bind(...values)),
-  );
-  return results.map((result) => result.results ?? []);
+  return configuredD1Database.prepare(sql).bind(...values).first<Record<string, unknown>>();
 }
 
 function createClient(connectionString: string, maximumConnections = 5): PrismaClient {

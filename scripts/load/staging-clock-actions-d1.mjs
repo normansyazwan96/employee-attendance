@@ -148,15 +148,15 @@ BEGIN
 END;`;
 }
 
-async function clock(user) {
+async function attendanceAction(user, action, idempotencyKey) {
   const started = performance.now();
-  const response = await fetch(`${baseUrl}/api/v2/attendance/events/clock-in`, {
+  const response = await fetch(`${baseUrl}/api/v2/attendance/events/${action}`, {
     method: "POST",
     signal: AbortSignal.timeout(30_000),
     headers: {
       Authorization: `Bearer ${accessToken(user)}`,
       "Content-Type": "application/json",
-      "Idempotency-Key": `load-${suffix}-${user.userId}`,
+      "Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify({ location: { latitude, longitude, accuracy: 10 } }),
   });
@@ -171,7 +171,12 @@ async function clock(user) {
     }
     throw new Error(`${response.status}:${code}`);
   }
-  return performance.now() - started;
+  const body = await response.json();
+  return { latencyMs: performance.now() - started, status: response.status, body };
+}
+
+function clock(user) {
+  return attendanceAction(user, "clock-in", `load-${suffix}-${user.userId}`);
 }
 
 mkdirSync(tempDirectory, { recursive: true });
@@ -193,7 +198,7 @@ try {
   const started = performance.now();
   const settled = await Promise.allSettled(users.map(clock));
   const duration = performance.now() - started;
-  const latencies = settled.filter((item) => item.status === "fulfilled").map((item) => item.value).sort((a, b) => a - b);
+  const latencies = settled.filter((item) => item.status === "fulfilled").map((item) => item.value.latencyMs).sort((a, b) => a - b);
   const failures = settled.length - latencies.length;
   const failureReasons = settled.filter((item) => item.status === "rejected").reduce((summary, item) => {
     const reason = item.reason instanceof Error ? item.reason.message : "UNKNOWN";
@@ -201,8 +206,17 @@ try {
     return summary;
   }, {});
   const createdEvents = Number(query(`SELECT count(*) AS total FROM "AttendanceEvent" WHERE "clientId" = ${sqlText(clientId)} AND "type" = 'CLOCK_IN';`)[0]?.total ?? 0);
+  const smokeUser = users[0];
+  const replay = await attendanceAction(smokeUser, "clock-in", `load-${suffix}-${smokeUser.userId}`);
+  if (replay.status !== 200 || replay.body?.replayed !== true) throw new Error("Clock-in idempotency replay did not return the stored result");
+  const transitionStatuses = [];
+  for (const action of ["break-start", "break-end", "clock-out"]) {
+    const result = await attendanceAction(smokeUser, action, `load-${suffix}-${action}-${smokeUser.userId}`);
+    transitionStatuses.push({ action, status: result.status });
+    if (result.status !== 201 || result.body?.replayed !== false) throw new Error(`${action} transition smoke test failed`);
+  }
   const p95 = latencies[Math.max(0, Math.ceil(latencies.length * 0.95) - 1)] ?? Infinity;
-  const report = { requests: settled.length, failures, createdEvents, durationMs: Math.round(duration), p95Ms: Math.round(p95), failureReasons };
+  const report = { requests: settled.length, failures, createdEvents, durationMs: Math.round(duration), p95Ms: Math.round(p95), replayStatus: replay.status, transitionStatuses, failureReasons };
   console.log(JSON.stringify(report));
   failed = failures > 0 || createdEvents !== userCount || p95 > 2_500;
 } finally {

@@ -1,8 +1,8 @@
-import { AttendanceEventType, AttendanceStatus, Prisma, RequestStatus, TimesheetState } from "@prisma/client";
+import { AttendanceEventType, AttendanceStatus, Prisma, RequestStatus, TimesheetState, type AttendanceEvent, type AttendanceRecord, type ShiftTemplate, type TimesheetDay } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { acquireDatabaseLock, executeD1Batch, isD1Database, prisma, queryD1Batch } from "../services/prisma.js";
+import { acquireDatabaseLock, executeD1Batch, isD1Database, prisma, queryD1First } from "../services/prisma.js";
 import { validateLocation, validateWorksiteLocations, type Location, type LocationValidation } from "../services/geofence.js";
 import { calculateTimesheet } from "../services/timesheet-calculator.js";
 import { attendanceDate } from "../utils/attendance-date.js";
@@ -54,6 +54,17 @@ function actionInput(request: Request, response: Response): { location: Location
   return { location: parsedLocation.data, idempotencyKey };
 }
 
+type D1ActionState = {
+  occurredAt: Date;
+  duplicate: AttendanceEvent | null;
+  latest: Pick<AttendanceEvent, "type" | "workDate"> | null;
+  workDate: string | null;
+  existingTimesheet: TimesheetDay | null;
+  attendance: AttendanceRecord | null;
+  events: Array<Pick<AttendanceEvent, "type" | "occurredAt">>;
+  shiftTemplate: Pick<ShiftTemplate, "startTime" | "endTime" | "gracePeriodMinutes" | "isOvernight"> | null;
+};
+
 type D1AttendanceActionInput = {
   employee: { id: string; firstName: string; lastName: string };
   clientId: string;
@@ -65,6 +76,7 @@ type D1AttendanceActionInput = {
   requestId: string;
   ipAddress: string | undefined;
   userAgent: string | null;
+  actionState: D1ActionState;
 };
 
 type AttendancePreflight = {
@@ -72,6 +84,7 @@ type AttendancePreflight = {
   pendingValues?: { requestKind?: string; action?: string };
   policy: { overtimeThreshold: number; roundingIncrement: number; maximumShiftMinutes: number; maximumGpsAccuracy: number } | null;
   locationValidation: LocationValidation;
+  actionState: D1ActionState;
 };
 
 function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
@@ -84,22 +97,91 @@ function parseJsonObject(value: unknown): Record<string, unknown> | undefined {
   }
 }
 
-async function loadD1AttendancePreflight(userId: string, location: Location): Promise<AttendancePreflight> {
-  const [employeeRows = [], correctionRows = [], worksiteRows = []] = await queryD1Batch([
-    {
-      sql: `SELECT e."id", e."firstName", e."lastName", e."employmentStatus", u."clientId", p."overtimeThreshold", p."roundingIncrement", p."maximumShiftMinutes", p."maximumGpsAccuracy" FROM "Employee" e INNER JOIN "User" u ON u."id" = e."userId" LEFT JOIN "WorkPolicy" p ON p."clientId" = u."clientId" WHERE e."userId" = ? LIMIT 1`,
-      values: [userId],
-    },
-    {
-      sql: `SELECT c."requestedValues" FROM "AttendanceCorrection" c INNER JOIN "Employee" e ON e."id" = c."employeeId" WHERE e."userId" = ? AND c."status" = 'PENDING' ORDER BY c."createdAt" DESC LIMIT 1`,
-      values: [userId],
-    },
-    {
-      sql: `SELECT w."id", w."name", w."latitude", w."longitude", w."radiusMeters" FROM "Worksite" w WHERE w."clientId" = (SELECT u."clientId" FROM "User" u WHERE u."id" = ? LIMIT 1) AND w."isActive" = 1`,
-      values: [userId],
-    },
-  ]);
-  const row = employeeRows[0];
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function d1Date(value: unknown): Date | null {
+  if (value == null) return null;
+  const date = new Date(typeof value === "number" ? value : Number.isFinite(Number(value)) ? Number(value) : String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function mapD1Event(value: unknown): AttendanceEvent | null {
+  const row = parseJsonObject(value);
+  const occurredAt = d1Date(row?.occurredAt);
+  const createdAt = d1Date(row?.createdAt);
+  if (!row || !occurredAt || !createdAt) return null;
+  return {
+    id: String(row.id), employeeId: String(row.employeeId), clientId: row.clientId == null ? null : String(row.clientId), workDate: String(row.workDate),
+    type: String(row.type) as AttendanceEventType, source: String(row.source) as AttendanceEvent["source"], occurredAt,
+    worksiteId: row.worksiteId == null ? null : String(row.worksiteId), latitude: row.latitude == null ? null : Number(row.latitude), longitude: row.longitude == null ? null : Number(row.longitude),
+    accuracyMeters: row.accuracyMeters == null ? null : Number(row.accuracyMeters), distanceMeters: row.distanceMeters == null ? null : Number(row.distanceMeters),
+    acceptedRadiusMeters: row.acceptedRadiusMeters == null ? null : Number(row.acceptedRadiusMeters), idempotencyKey: String(row.idempotencyKey),
+    createdByUserId: row.createdByUserId == null ? null : String(row.createdByUserId), deviceDetails: parseJsonObject(row.deviceDetails) as Prisma.JsonValue ?? null, createdAt,
+  };
+}
+
+function mapD1Timesheet(value: unknown): TimesheetDay | null {
+  const row = parseJsonObject(value);
+  const createdAt = d1Date(row?.createdAt);
+  const updatedAt = d1Date(row?.updatedAt);
+  if (!row || !createdAt || !updatedAt) return null;
+  return {
+    id: String(row.id), employeeId: String(row.employeeId), clientId: row.clientId == null ? null : String(row.clientId), workDate: String(row.workDate), state: String(row.state) as TimesheetState,
+    firstClockInAt: d1Date(row.firstClockInAt), lastClockOutAt: d1Date(row.lastClockOutAt), regularMinutes: Number(row.regularMinutes), overtimeMinutes: Number(row.overtimeMinutes),
+    breakMinutes: Number(row.breakMinutes), lateMinutes: Number(row.lateMinutes), earlyDepartureMinutes: Number(row.earlyDepartureMinutes), leaveMinutes: Number(row.leaveMinutes),
+    paidLeaveMinutes: Number(row.paidLeaveMinutes), unpaidLeaveMinutes: Number(row.unpaidLeaveMinutes), isAbsent: Boolean(row.isAbsent), exceptionCodes: parseJsonArray(row.exceptionCodes).map(String),
+    version: Number(row.version), approvedAt: d1Date(row.approvedAt), lockedAt: d1Date(row.lockedAt), createdAt, updatedAt, payPeriodId: row.payPeriodId == null ? null : String(row.payPeriodId),
+  };
+}
+
+function mapD1Attendance(value: unknown): AttendanceRecord | null {
+  const row = parseJsonObject(value);
+  const clockInAt = d1Date(row?.clockInAt);
+  const createdAt = d1Date(row?.createdAt);
+  const updatedAt = d1Date(row?.updatedAt);
+  if (!row || !clockInAt || !createdAt || !updatedAt) return null;
+  return {
+    id: String(row.id), employeeId: String(row.employeeId), workDate: String(row.workDate), clockInAt, clockOutAt: d1Date(row.clockOutAt),
+    clockInLatitude: row.clockInLatitude == null ? null : Number(row.clockInLatitude), clockInLongitude: row.clockInLongitude == null ? null : Number(row.clockInLongitude),
+    clockInAccuracy: row.clockInAccuracy == null ? null : Number(row.clockInAccuracy), clockOutLatitude: row.clockOutLatitude == null ? null : Number(row.clockOutLatitude),
+    clockOutLongitude: row.clockOutLongitude == null ? null : Number(row.clockOutLongitude), clockOutAccuracy: row.clockOutAccuracy == null ? null : Number(row.clockOutAccuracy),
+    status: String(row.status) as AttendanceStatus, createdAt, updatedAt,
+  };
+}
+
+async function loadD1AttendancePreflight(userId: string, requestedType: AttendanceEventType, input: { location: Location; idempotencyKey: string }): Promise<AttendancePreflight> {
+  const occurredAt = new Date();
+  const today = attendanceDate(occurredAt);
+  const row = await queryD1First(`WITH employee_row AS (
+    SELECT e."id", e."firstName", e."lastName", e."employmentStatus", u."clientId"
+    FROM "Employee" e INNER JOIN "User" u ON u."id" = e."userId" WHERE e."userId" = ? LIMIT 1
+  ), duplicate_event AS (
+    SELECT ae.* FROM "AttendanceEvent" ae INNER JOIN employee_row er ON er."id" = ae."employeeId" WHERE ae."idempotencyKey" = ? LIMIT 1
+  ), latest_event AS (
+    SELECT ae."type", ae."workDate" FROM "AttendanceEvent" ae INNER JOIN employee_row er ON er."id" = ae."employeeId" ORDER BY ae."occurredAt" DESC, ae."createdAt" DESC LIMIT 1
+  ), target AS (
+    SELECT CASE WHEN d."workDate" IS NOT NULL THEN d."workDate" WHEN ? = 'CLOCK_IN' THEN ? ELSE l."workDate" END AS "workDate"
+    FROM employee_row er LEFT JOIN duplicate_event d ON 1 = 1 LEFT JOIN latest_event l ON 1 = 1
+  )
+  SELECT er.*, p."overtimeThreshold", p."roundingIncrement", p."maximumShiftMinutes", p."maximumGpsAccuracy",
+    (SELECT c."requestedValues" FROM "AttendanceCorrection" c WHERE c."employeeId" = er."id" AND c."status" = 'PENDING' ORDER BY c."createdAt" DESC LIMIT 1) AS "pendingValues",
+    (SELECT json_group_array(json_object('id', w."id", 'name', w."name", 'latitude', w."latitude", 'longitude', w."longitude", 'radiusMeters', w."radiusMeters")) FROM "Worksite" w WHERE w."clientId" = er."clientId" AND w."isActive" = 1) AS "worksites",
+    (SELECT json_object('id', d."id", 'employeeId', d."employeeId", 'clientId', d."clientId", 'workDate', d."workDate", 'type', d."type", 'source', d."source", 'occurredAt', d."occurredAt", 'worksiteId', d."worksiteId", 'latitude', d."latitude", 'longitude', d."longitude", 'accuracyMeters', d."accuracyMeters", 'distanceMeters', d."distanceMeters", 'acceptedRadiusMeters', d."acceptedRadiusMeters", 'idempotencyKey', d."idempotencyKey", 'createdByUserId', d."createdByUserId", 'deviceDetails', d."deviceDetails", 'createdAt', d."createdAt") FROM duplicate_event d) AS "duplicateEvent",
+    (SELECT json_object('type', l."type", 'workDate', l."workDate") FROM latest_event l) AS "latestEvent", target."workDate",
+    (SELECT json_object('id', t."id", 'employeeId', t."employeeId", 'clientId', t."clientId", 'workDate', t."workDate", 'state', t."state", 'firstClockInAt', t."firstClockInAt", 'lastClockOutAt', t."lastClockOutAt", 'regularMinutes', t."regularMinutes", 'overtimeMinutes', t."overtimeMinutes", 'breakMinutes', t."breakMinutes", 'lateMinutes', t."lateMinutes", 'earlyDepartureMinutes', t."earlyDepartureMinutes", 'leaveMinutes', t."leaveMinutes", 'paidLeaveMinutes', t."paidLeaveMinutes", 'unpaidLeaveMinutes', t."unpaidLeaveMinutes", 'isAbsent', t."isAbsent", 'exceptionCodes', t."exceptionCodes", 'version', t."version", 'approvedAt', t."approvedAt", 'lockedAt', t."lockedAt", 'createdAt', t."createdAt", 'updatedAt', t."updatedAt", 'payPeriodId', t."payPeriodId") FROM "TimesheetDay" t WHERE t."employeeId" = er."id" AND t."workDate" = target."workDate" LIMIT 1) AS "existingTimesheet",
+    (SELECT json_object('id', a."id", 'employeeId', a."employeeId", 'workDate', a."workDate", 'clockInAt', a."clockInAt", 'clockOutAt', a."clockOutAt", 'clockInLatitude', a."clockInLatitude", 'clockInLongitude', a."clockInLongitude", 'clockInAccuracy', a."clockInAccuracy", 'clockOutLatitude', a."clockOutLatitude", 'clockOutLongitude', a."clockOutLongitude", 'clockOutAccuracy', a."clockOutAccuracy", 'status', a."status", 'createdAt', a."createdAt", 'updatedAt', a."updatedAt") FROM "AttendanceRecord" a WHERE a."employeeId" = er."id" AND a."workDate" = target."workDate" LIMIT 1) AS "attendance",
+    (SELECT json_group_array(json_object('type', ordered."type", 'occurredAt', ordered."occurredAt")) FROM (SELECT ae."type", ae."occurredAt" FROM "AttendanceEvent" ae WHERE ae."employeeId" = er."id" AND ae."workDate" = target."workDate" ORDER BY ae."occurredAt", ae."createdAt") ordered) AS "events",
+    (SELECT json_object('startTime', st."startTime", 'endTime', st."endTime", 'gracePeriodMinutes', st."gracePeriodMinutes", 'isOvernight', st."isOvernight") FROM "ScheduleAssignment" sa INNER JOIN "ShiftTemplate" st ON st."id" = sa."shiftTemplateId" WHERE sa."employeeId" = er."id" AND sa."effectiveFrom" <= target."workDate" AND (sa."effectiveTo" IS NULL OR sa."effectiveTo" >= target."workDate") ORDER BY sa."effectiveFrom" DESC LIMIT 1) AS "shiftTemplate"
+  FROM employee_row er LEFT JOIN "WorkPolicy" p ON p."clientId" = er."clientId" CROSS JOIN target`, [userId, input.idempotencyKey, requestedType, today]);
   const employee = row ? {
     id: String(row.id),
     firstName: String(row.firstName),
@@ -113,47 +195,48 @@ async function loadD1AttendancePreflight(userId: string, location: Location): Pr
     maximumShiftMinutes: Number(row.maximumShiftMinutes),
     maximumGpsAccuracy: Number(row.maximumGpsAccuracy),
   };
-  const pending = parseJsonObject(correctionRows[0]?.requestedValues);
+  const pending = parseJsonObject(row?.pendingValues);
+  const latest = parseJsonObject(row?.latestEvent);
+  const shift = parseJsonObject(row?.shiftTemplate);
+  const events = parseJsonArray(row?.events).flatMap((value) => {
+    const event = parseJsonObject(value);
+    const occurredAt = d1Date(event?.occurredAt);
+    return event && occurredAt ? [{ type: String(event.type) as AttendanceEventType, occurredAt }] : [];
+  });
+  const worksites = parseJsonArray(row?.worksites).flatMap((value) => {
+    const worksite = parseJsonObject(value);
+    return worksite ? [{ id: String(worksite.id), name: String(worksite.name), latitude: Number(worksite.latitude), longitude: Number(worksite.longitude), radiusMeters: Number(worksite.radiusMeters) }] : [];
+  });
   return {
     employee,
     pendingValues: pending as AttendancePreflight["pendingValues"],
     policy,
-    locationValidation: validateWorksiteLocations(worksiteRows.map((worksite) => ({
-      id: String(worksite.id),
-      name: String(worksite.name),
-      latitude: Number(worksite.latitude),
-      longitude: Number(worksite.longitude),
-      radiusMeters: Number(worksite.radiusMeters),
-    })), location),
+    locationValidation: validateWorksiteLocations(worksites, input.location),
+    actionState: {
+      occurredAt,
+      duplicate: mapD1Event(row?.duplicateEvent),
+      latest: latest ? { type: String(latest.type) as AttendanceEventType, workDate: String(latest.workDate) } : null,
+      workDate: row?.workDate == null ? null : String(row.workDate),
+      existingTimesheet: mapD1Timesheet(row?.existingTimesheet),
+      attendance: mapD1Attendance(row?.attendance),
+      events,
+      shiftTemplate: shift ? { startTime: String(shift.startTime), endTime: String(shift.endTime), gracePeriodMinutes: Number(shift.gracePeriodMinutes), isOvernight: Boolean(shift.isOvernight) } : null,
+    },
   };
 }
 
 async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
-  const { employee, clientId, requestedType, input, acceptedWorksite, policy, actorUserId, requestId, ipAddress, userAgent } = args;
-  const [duplicate, latest] = await Promise.all([
-    prisma.attendanceEvent.findUnique({
-      where: { employeeId_idempotencyKey: { employeeId: employee.id, idempotencyKey: input.idempotencyKey } },
-    }),
-    prisma.attendanceEvent.findFirst({ where: { employeeId: employee.id }, orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }] }),
-  ]);
+  const { employee, clientId, requestedType, input, acceptedWorksite, policy, actorUserId, requestId, ipAddress, userAgent, actionState } = args;
+  const { duplicate, latest, existingTimesheet, attendance, events, shiftTemplate } = actionState;
   if (duplicate) {
-    const [timesheet, attendance] = await Promise.all([
-      prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate: duplicate.workDate } } }),
-      prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate: duplicate.workDate } } }),
-    ]);
-    return { event: duplicate, timesheet, attendance, replayed: true, webhookDeliveryId: null };
+    return { event: duplicate, timesheet: existingTimesheet, attendance, replayed: true, webhookDeliveryId: null };
   }
 
   if (!transitionAllowed(latest?.type, requestedType)) throw new AttendanceActionError(409, "INVALID_ATTENDANCE_TRANSITION", transitionMessages[requestedType]);
 
-  const now = new Date();
-  const workDate = requestedType === AttendanceEventType.CLOCK_IN ? attendanceDate(now) : latest!.workDate;
-  const [existingTimesheet, attendance, events, assignment] = await Promise.all([
-    prisma.timesheetDay.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
-    prisma.attendanceRecord.findUnique({ where: { employeeId_workDate: { employeeId: employee.id, workDate } } }),
-    prisma.attendanceEvent.findMany({ where: { employeeId: employee.id, workDate }, orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }] }),
-    prisma.scheduleAssignment.findFirst({ where: { employeeId: employee.id, effectiveFrom: { lte: workDate }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: workDate } }] }, include: { shiftTemplate: true }, orderBy: { effectiveFrom: "desc" } }),
-  ]);
+  const now = actionState.occurredAt;
+  const workDate = actionState.workDate;
+  if (!workDate) throw new AttendanceActionError(409, "INVALID_ATTENDANCE_TRANSITION", transitionMessages[requestedType]);
   if (existingTimesheet?.state === TimesheetState.LOCKED) throw new AttendanceActionError(409, "TIMESHEET_LOCKED", "This timesheet is locked and cannot accept new events");
 
   const calculation = calculateTimesheet([...events, { type: requestedType, occurredAt: now }], {
@@ -161,7 +244,7 @@ async function applyAttendanceActionOnD1(args: D1AttendanceActionInput) {
     roundingIncrement: policy?.roundingIncrement ?? 1,
     maximumShiftMinutes: policy?.maximumShiftMinutes,
   });
-  const scheduleMetrics = calculateScheduleMetrics(workDate, calculation.firstClockInAt, calculation.lastClockOutAt, assignment?.shiftTemplate ?? null);
+  const scheduleMetrics = calculateScheduleMetrics(workDate, calculation.firstClockInAt, calculation.lastClockOutAt, shiftTemplate);
   const scheduleExceptions = applyScheduleExceptions(calculation, scheduleMetrics);
   const eventId = randomUUID();
   const attendanceId = attendance?.id ?? randomUUID();
@@ -265,7 +348,7 @@ async function performAction(request: Request, response: Response, requestedType
   const input = actionInput(request, response);
   if (!input) return;
 
-  const d1Preflight = isD1Database() ? await loadD1AttendancePreflight(response.locals.auth.sub, input.location) : null;
+  const d1Preflight = isD1Database() ? await loadD1AttendancePreflight(response.locals.auth.sub, requestedType, input) : null;
   const employee = d1Preflight?.employee ?? await prisma.employee.findUnique({
       where: { userId: response.locals.auth.sub },
       include: { user: { select: { clientId: true } } },
@@ -354,6 +437,7 @@ async function performAction(request: Request, response: Response, requestedType
       requestId: response.locals.requestId,
       ipAddress: request.ip,
       userAgent: request.get("user-agent")?.slice(0, 500) ?? null,
+      actionState: d1Preflight!.actionState,
     }) : await prisma.$transaction(async (transaction) => {
       await acquireDatabaseLock(transaction, employee.id);
 
