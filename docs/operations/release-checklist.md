@@ -28,9 +28,9 @@
 
 - Cloudflare Queues: provisioned for production and staging.
 - Production and staging D1 databases: provisioned in APAC with 42 application tables and immutable-history triggers.
-- Production deployment: Cloudflare Worker version `abda5496-8767-444b-b445-f2ac0ed7f8d2` is live; `/api/v2/health/live` and `/api/v2/health/ready` return 200.
+- Production deployment: Cloudflare Worker version `09f4fd2f-1b3f-47b4-83bd-8a756da0ba95` is live; `/api/v2/health/live` and `/api/v2/health/ready` return 200.
 - Production database: D1 is authoritative with exactly seven active users across two isolated organizations and zero foreign-key violations.
-- Database rollback: use the pre-release D1 Time Travel bookmark recorded in the release evidence. Neon `main` remains unchanged and disconnected from the Workers during the temporary cutover-retention window.
+- Database rollback: use pre-release D1 Time Travel bookmark `00000298-00000000-00005110-ef17772f2d8deb3cb53f029ef0ca6647`. Neon `main` remains unchanged and disconnected from the Workers during the temporary cutover-retention window.
 - Application rollback: use Cloudflare Worker deployment history. The former Vercel deployment and origin were retired on 2026-10-25.
 - Cloudflare R2: intentionally deferred to stay on the free tier. Direct payroll downloads remain available; asynchronous stored exports remain unavailable.
 - The optimized D1-native rehearsal completed 100 of 100 clock-ins with no failures and improved p95 from 4.382 seconds to 2.105 seconds. Idempotent replay, break start, break end, and clock-out also passed; the 2.5-second performance gate is satisfied.
